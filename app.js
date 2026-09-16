@@ -1021,7 +1021,8 @@
             </div>
           </div>
           <div class="item-btns">
-            <button class="secondary small btn-share">📤</button>
+            <button class="secondary small btn-share" data-format="card" title="Partager en carte">🖼️</button>
+            <button class="secondary small btn-share" data-format="story" title="Partager en story">📱</button>
             <button class="secondary small btn-edit-result">✏️</button>
             <button class="danger small btn-del">🗑</button>
           </div>
@@ -1052,7 +1053,7 @@
       btn.addEventListener('click', (e) => {
         const id = e.target.closest('.item').dataset.id;
         const result = data.results.find((r) => r.id === id);
-        if (result) shareResult(result);
+        if (result) shareResult(result, e.target.dataset.format || 'card');
       });
     });
     container.querySelectorAll('.btn-edit-result').forEach((btn) => {
@@ -1069,7 +1070,38 @@
     });
   }
 
+  function roundRectPath(ctx, x, y, w, h, r) {
+    const radius = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + w, y, x + w, y + h, radius);
+    ctx.arcTo(x + w, y + h, x, y + h, radius);
+    ctx.arcTo(x, y + h, x, y, radius);
+    ctx.arcTo(x, y, x + w, y, radius);
+    ctx.closePath();
+  }
+
+  function drawGridBackground(ctx, x, y, w, h, hLines, vLines) {
+    ctx.strokeStyle = 'rgba(148,163,184,0.15)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < hLines; i++) {
+      const gy = y + (h / hLines) * i;
+      ctx.beginPath();
+      ctx.moveTo(x, gy);
+      ctx.lineTo(x + w, gy);
+      ctx.stroke();
+    }
+    for (let i = 1; i < vLines; i++) {
+      const gx = x + (w / vLines) * i;
+      ctx.beginPath();
+      ctx.moveTo(gx, y);
+      ctx.lineTo(gx, y + h);
+      ctx.stroke();
+    }
+  }
+
   function drawRouteShapeOnCtx(ctx, offsetX0, offsetY0, width, height, track) {
+    drawGridBackground(ctx, offsetX0, offsetY0, width, height, 3, 3);
     const pad = 10;
     const avgLat = track.reduce((s, p) => s + p[0], 0) / track.length;
     const latRad = avgLat * Math.PI / 180;
@@ -1102,6 +1134,7 @@
   }
 
   function drawElevationProfileOnCtx(ctx, offsetX, offsetY, width, height, elevations) {
+    drawGridBackground(ctx, offsetX, offsetY, width, height, 3, 4);
     const padTop = 8;
     const padBottom = 4;
     const min = Math.min(...elevations);
@@ -1110,7 +1143,10 @@
     const plotHeight = height - padTop - padBottom;
     const stepX = width / (elevations.length - 1);
 
-    ctx.fillStyle = 'rgba(250,204,21,0.2)';
+    const gradient = ctx.createLinearGradient(0, offsetY + padTop, 0, offsetY + height - padBottom);
+    gradient.addColorStop(0, 'rgba(250,204,21,0.35)');
+    gradient.addColorStop(1, 'rgba(250,204,21,0.02)');
+    ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.moveTo(offsetX, offsetY + height - padBottom);
     elevations.forEach((e, i) => {
@@ -1161,19 +1197,23 @@
   }
 
   // ---------- Partage résultat ----------
-  async function buildResultShareImage(result) {
-    const width = 800;
+  const STAT_ICONS = { distance: '📏', denivele: '⛰️', temps: '⏱️', allure: '⚡' };
+
+  async function buildResultShareImage(result, format = 'card') {
+    const isStory = format === 'story';
+    const width = isStory ? 900 : 800;
     const hasPhoto = !!result.photo;
     const hasTrack = result.track && result.track.length > 1;
     const hasElevations = result.elevations && result.elevations.length > 1;
     const hasVisuals = hasTrack || hasElevations;
 
-    const photoHeight = hasPhoto ? 280 : 0;
-    const headerHeight = 110;
-    const statsHeight = 120;
-    const visualsHeight = hasVisuals ? 220 : 0;
+    const photoHeight = hasPhoto ? (isStory ? 760 : 300) : 0;
+    const headerHeight = hasPhoto ? (isStory ? 170 : 130) : (isStory ? 140 : 110);
+    const statsHeight = isStory ? 150 : 120;
+    const visualsHeight = hasVisuals ? (isStory ? 280 : 220) : 0;
     const ressentiHeight = 60;
-    const height = photoHeight + headerHeight + statsHeight + visualsHeight + ressentiHeight;
+    const margin = 32;
+    const height = photoHeight + headerHeight + statsHeight + visualsHeight + ressentiHeight + margin;
 
     let photoImg = null;
     if (hasPhoto) {
@@ -1185,77 +1225,137 @@
     canvas.height = height;
     const ctx = canvas.getContext('2d');
 
-    ctx.fillStyle = '#0f172a';
+    // Rounded card with a subtle navy-to-green gradient background.
+    roundRectPath(ctx, 0, 0, width, height, 28);
+    ctx.clip();
+    const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
+    bgGradient.addColorStop(0, '#0f172a');
+    bgGradient.addColorStop(1, '#052e1d');
+    ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, width, height);
 
     let cursorY = 0;
+    const ressentiColors = { 5: '#22c55e', 4: '#22c55e', 3: '#facc15', 2: '#fb923c', 1: '#f87171' };
+    const accent = ressentiColors[result.ressenti] || '#22c55e';
+
     if (photoImg) {
-      const scale = Math.max(width / photoImg.width, photoHeight / photoImg.height);
+      const scale = Math.max(width / photoImg.naturalWidth, photoHeight / photoImg.naturalHeight);
       const sw = width / scale;
       const sh = photoHeight / scale;
-      const sx = (photoImg.width - sw) / 2;
-      const sy = (photoImg.height - sh) / 2;
+      const sx = (photoImg.naturalWidth - sw) / 2;
+      const sy = (photoImg.naturalHeight - sh) / 2;
       ctx.drawImage(photoImg, sx, sy, sw, sh, 0, 0, width, photoHeight);
+
+      // Dark gradient so the title stays readable over any photo.
+      const overlayHeight = headerHeight + 60;
+      const overlay = ctx.createLinearGradient(0, photoHeight - overlayHeight, 0, photoHeight);
+      overlay.addColorStop(0, 'rgba(15,23,42,0)');
+      overlay.addColorStop(1, 'rgba(15,23,42,0.92)');
+      ctx.fillStyle = overlay;
+      ctx.fillRect(0, photoHeight - overlayHeight, width, overlayHeight);
+
+      ctx.fillStyle = accent;
+      ctx.font = 'bold 20px system-ui, sans-serif';
+      ctx.fillText('🏔️ Suivi Trail', margin, photoHeight - headerHeight + 24);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${isStory ? 36 : 30}px system-ui, sans-serif`;
+      wrapText(ctx, result.name, margin, photoHeight - headerHeight + 62, width - margin * 2, isStory ? 40 : 34);
+
+      ctx.font = '18px system-ui, sans-serif';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText(formatDate(result.date), margin, photoHeight - 16);
       cursorY += photoHeight;
+    } else {
+      ctx.fillStyle = accent;
+      ctx.font = 'bold 20px system-ui, sans-serif';
+      ctx.fillText('🏔️ Suivi Trail', margin, cursorY + 34);
+
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = `bold ${isStory ? 36 : 30}px system-ui, sans-serif`;
+      wrapText(ctx, result.name, margin, cursorY + 72, width - margin * 2, isStory ? 40 : 34);
+
+      ctx.font = '18px system-ui, sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(formatDate(result.date), margin, cursorY + headerHeight - 10);
+      cursorY += headerHeight;
     }
-
-    ctx.fillStyle = '#facc15';
-    ctx.font = 'bold 20px system-ui, sans-serif';
-    ctx.fillText('🏔️ Suivi Trail', 32, cursorY + 34);
-
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = 'bold 30px system-ui, sans-serif';
-    wrapText(ctx, result.name, 32, cursorY + 72, width - 64, 34);
-
-    ctx.font = '18px system-ui, sans-serif';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText(formatDate(result.date), 32, cursorY + headerHeight - 10);
-    cursorY += headerHeight;
 
     const pace = formatPace(result.distanceKm, result.temps);
     const stats = [
-      result.distanceKm ? [`${result.distanceKm} km`, 'Distance'] : null,
-      result.deniveleM ? [`${Math.round(result.deniveleM)} m`, 'D+'] : null,
-      result.temps ? [result.temps, 'Temps'] : null,
-      pace ? [pace, 'Allure'] : null,
+      result.distanceKm ? [STAT_ICONS.distance, `${result.distanceKm} km`, 'Distance'] : null,
+      result.deniveleM ? [STAT_ICONS.denivele, `${Math.round(result.deniveleM)} m`, 'D+'] : null,
+      result.temps ? [STAT_ICONS.temps, result.temps, 'Temps'] : null,
+      pace ? [STAT_ICONS.allure, pace, 'Allure'] : null,
     ].filter(Boolean);
 
-    const boxWidth = (width - 64) / Math.max(stats.length, 1);
+    const cols = isStory ? 2 : stats.length;
+    const rows = Math.ceil(stats.length / cols);
+    const gap = 14;
+    const boxWidth = (width - margin * 2 - gap * (cols - 1)) / cols;
+    const boxHeight = (statsHeight - 10 - gap * (rows - 1)) / rows;
     stats.forEach((s, i) => {
-      const x = 32 + i * boxWidth;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = margin + col * (boxWidth + gap);
+      const y = cursorY + row * (boxHeight + gap);
+      roundRectPath(ctx, x, y, boxWidth, boxHeight, 12);
       ctx.fillStyle = 'rgba(34,197,94,0.12)';
-      ctx.fillRect(x, cursorY, boxWidth - 12, statsHeight - 20);
-      ctx.fillStyle = '#22c55e';
-      ctx.font = 'bold 26px system-ui, sans-serif';
-      ctx.fillText(s[0], x + 12, cursorY + 45);
+      ctx.fill();
+      ctx.font = '20px system-ui, sans-serif';
+      ctx.fillStyle = accent;
+      ctx.fillText(s[0], x + 14, y + 28);
+      ctx.font = 'bold 24px system-ui, sans-serif';
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillText(s[1], x + 44, y + 28);
+      ctx.font = '13px system-ui, sans-serif';
       ctx.fillStyle = '#94a3b8';
-      ctx.font = '14px system-ui, sans-serif';
-      ctx.fillText(s[1], x + 12, cursorY + 75);
+      ctx.fillText(s[2], x + 14, y + boxHeight - 12);
     });
     cursorY += statsHeight;
 
     if (hasVisuals) {
-      const gap = 16;
-      const half = (width - 64 - gap) / 2;
-      const boxH = visualsHeight - 30;
-      if (hasTrack) {
-        ctx.fillStyle = '#1e293b';
-        ctx.fillRect(32, cursorY, half, boxH);
-        drawRouteShapeOnCtx(ctx, 32, cursorY, half, boxH, result.track);
-      }
-      if (hasElevations) {
-        const x2 = 32 + (hasTrack ? half + gap : 0);
-        const w2 = hasTrack ? half : width - 64;
-        ctx.fillStyle = '#1e293b';
-        ctx.fillRect(x2, cursorY, w2, boxH);
-        drawElevationProfileOnCtx(ctx, x2, cursorY, w2, boxH, result.elevations);
+      const vGap = 16;
+      const stacked = isStory;
+      const boxH = stacked ? (visualsHeight - 30) / (hasTrack && hasElevations ? 2 : 1) - vGap / 2 : visualsHeight - 30;
+      if (stacked) {
+        let vy = cursorY;
+        if (hasTrack) {
+          roundRectPath(ctx, margin, vy, width - margin * 2, boxH, 12);
+          ctx.fillStyle = '#1e293b';
+          ctx.fill();
+          drawRouteShapeOnCtx(ctx, margin, vy, width - margin * 2, boxH, result.track);
+          vy += boxH + vGap;
+        }
+        if (hasElevations) {
+          roundRectPath(ctx, margin, vy, width - margin * 2, boxH, 12);
+          ctx.fillStyle = '#1e293b';
+          ctx.fill();
+          drawElevationProfileOnCtx(ctx, margin, vy, width - margin * 2, boxH, result.elevations);
+        }
+      } else {
+        const half = (width - margin * 2 - vGap) / 2;
+        if (hasTrack) {
+          roundRectPath(ctx, margin, cursorY, half, boxH, 12);
+          ctx.fillStyle = '#1e293b';
+          ctx.fill();
+          drawRouteShapeOnCtx(ctx, margin, cursorY, half, boxH, result.track);
+        }
+        if (hasElevations) {
+          const x2 = margin + (hasTrack ? half + vGap : 0);
+          const w2 = hasTrack ? half : width - margin * 2;
+          roundRectPath(ctx, x2, cursorY, w2, boxH, 12);
+          ctx.fillStyle = '#1e293b';
+          ctx.fill();
+          drawElevationProfileOnCtx(ctx, x2, cursorY, w2, boxH, result.elevations);
+        }
       }
       cursorY += visualsHeight;
     }
 
     ctx.fillStyle = '#e2e8f0';
     ctx.font = '22px system-ui, sans-serif';
-    ctx.fillText(RESSENTI_LABELS[result.ressenti] || '', 32, cursorY + 30);
+    ctx.fillText(RESSENTI_LABELS[result.ressenti] || '', margin, cursorY + 30);
 
     return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   }
@@ -1277,8 +1377,8 @@
     if (line) ctx.fillText(line, x, curY);
   }
 
-  async function shareResult(result) {
-    const blob = await buildResultShareImage(result);
+  async function shareResult(result, format = 'card') {
+    const blob = await buildResultShareImage(result, format);
     const pace = formatPace(result.distanceKm, result.temps);
     const text = `${result.name} — ${formatDate(result.date)}` +
       (result.distanceKm ? ` · ${result.distanceKm} km` : '') +
@@ -1437,6 +1537,22 @@
     const range = max - min || 1;
     const plotHeight = height - padTop - padBottom;
     const stepX = width / Math.max(values.length - 1, 1);
+
+    const points = values
+      .map((v, i) => (v === null || v === undefined ? null : { x: i * stepX, y: padTop + (1 - (v - min) / range) * plotHeight }))
+      .filter(Boolean);
+
+    // Gradient fill under the line to make the trend easier to read at a glance.
+    const gradient = ctx.createLinearGradient(0, padTop, 0, padTop + plotHeight);
+    gradient.addColorStop(0, 'rgba(34,197,94,0.35)');
+    gradient.addColorStop(1, 'rgba(34,197,94,0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, padTop + plotHeight);
+    points.forEach((p) => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(points[points.length - 1].x, padTop + plotHeight);
+    ctx.closePath();
+    ctx.fill();
 
     ctx.strokeStyle = '#22c55e';
     ctx.lineWidth = 2;
