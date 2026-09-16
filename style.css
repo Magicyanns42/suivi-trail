@@ -231,6 +231,63 @@ button.small { padding: 5px 9px; font-size: 0.78rem; }
 .cal-dot.done { background: var(--muted); }
 .calendar-day-detail { margin-top: 10px; }
 
+.fab {
+  position: fixed;
+  right: 18px;
+  bottom: 82px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #06210f;
+  font-size: 1.8rem;
+  line-height: 1;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.fab.hidden { display: none; }
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 20;
+  align-items: flex-end;
+  justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  padding: 16px;
+  width: 100%;
+  max-width: 640px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.modal-close {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 0.9rem;
+}
+
 nav.tabs {
   position: fixed;
   bottom: 0; left: 0; right: 0;

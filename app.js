@@ -81,17 +81,27 @@
   }
 
   // ---------- Tabs ----------
+  const LAST_TAB_KEY = 'suiviTrail.lastTab.v1';
   const tabButtons = document.querySelectorAll('nav.tabs button');
+  const fabButton = document.getElementById('btn-open-plan-modal');
+
+  function activateTab(tabId) {
+    tabButtons.forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+    const btn = Array.from(tabButtons).find((b) => b.dataset.tab === tabId) || tabButtons[0];
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+    fabButton.classList.toggle('hidden', btn.dataset.tab !== 'tab-planning');
+    localStorage.setItem(LAST_TAB_KEY, btn.dataset.tab);
+    // Canvas charts need the tab visible (non-zero width) to size correctly.
+    if (btn.dataset.tab === 'tab-stats') renderEvolutionCharts();
+  }
+
   tabButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      tabButtons.forEach((b) => b.classList.remove('active'));
-      document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(btn.dataset.tab).classList.add('active');
-      // Canvas charts need the tab visible (non-zero width) to size correctly.
-      if (btn.dataset.tab === 'tab-stats') renderEvolutionCharts();
-    });
+    btn.addEventListener('click', () => activateTab(btn.dataset.tab));
   });
+
+  activateTab(localStorage.getItem(LAST_TAB_KEY) || 'tab-planning');
 
   // ---------- Notifications ----------
   const notifBanner = document.getElementById('notif-banner');
@@ -214,7 +224,31 @@
   const btnSubmitPlan = document.getElementById('btn-submit-plan');
   const btnCancelEditPlan = document.getElementById('btn-cancel-edit-plan');
   const formPlanTitle = document.getElementById('form-plan-title');
+  const planModalOverlay = document.getElementById('plan-modal-overlay');
   let editingPlanId = null;
+
+  function openPlanModal() {
+    planModalOverlay.classList.add('open');
+  }
+
+  function closePlanModal() {
+    planModalOverlay.classList.remove('open');
+  }
+
+  document.getElementById('btn-open-plan-modal').addEventListener('click', () => {
+    if (editingPlanId) cancelEditPlan();
+    openPlanModal();
+  });
+  document.getElementById('btn-close-plan-modal').addEventListener('click', () => {
+    if (editingPlanId) cancelEditPlan();
+    closePlanModal();
+  });
+  planModalOverlay.addEventListener('click', (e) => {
+    if (e.target === planModalOverlay) {
+      if (editingPlanId) cancelEditPlan();
+      closePlanModal();
+    }
+  });
 
   function startEditPlan(plan) {
     editingPlanId = plan.id;
@@ -229,7 +263,7 @@
     formPlanTitle.textContent = '✏️ Modifier la sortie';
     btnSubmitPlan.textContent = 'Enregistrer les modifications';
     btnCancelEditPlan.style.display = '';
-    formPlan.scrollIntoView({ behavior: 'smooth' });
+    openPlanModal();
   }
 
   function cancelEditPlan() {
@@ -241,7 +275,10 @@
     btnCancelEditPlan.style.display = 'none';
   }
 
-  btnCancelEditPlan.addEventListener('click', cancelEditPlan);
+  btnCancelEditPlan.addEventListener('click', () => {
+    cancelEditPlan();
+    closePlanModal();
+  });
 
   formPlan.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -263,6 +300,7 @@
         saveData();
       }
       cancelEditPlan();
+      closePlanModal();
       renderPlanning();
       renderResultForm();
       return;
@@ -286,6 +324,7 @@
     saveData();
     formPlan.reset();
     formPlan.querySelector('select[name="reminderHours"]').value = '24';
+    closePlanModal();
     renderPlanning();
     renderResultForm();
   });
@@ -504,10 +543,7 @@
           saveData();
           renderPlanning();
           prefillResultFromPlan(plan);
-          tabButtons.forEach((b) => b.classList.remove('active'));
-          document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
-          document.querySelector('[data-tab="tab-results"]').classList.add('active');
-          document.getElementById('tab-results').classList.add('active');
+          activateTab('tab-results');
         }
       });
     });
@@ -524,10 +560,7 @@
         const plan = data.plans.find((p) => p.id === id);
         if (plan) {
           startEditPlan(plan);
-          tabButtons.forEach((b) => b.classList.remove('active'));
-          document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
-          document.querySelector('[data-tab="tab-planning"]').classList.add('active');
-          document.getElementById('tab-planning').classList.add('active');
+          activateTab('tab-planning');
         }
       });
     });

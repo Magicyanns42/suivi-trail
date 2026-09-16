@@ -1,4 +1,4 @@
-const CACHE = 'suivi-trail-v14';
+const CACHE = 'suivi-trail-v15';
 const ASSETS = [
   './',
   './index.html',
