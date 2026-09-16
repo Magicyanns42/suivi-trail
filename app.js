@@ -2,6 +2,7 @@
   'use strict';
 
   const STORAGE_KEY = 'suiviTrail.data.v1';
+  const AUTO_BACKUP_KEY = 'suiviTrail.autoBackup.v1';
   const REMINDER_CHECK_MS = 60 * 1000;
 
   /** @type {{plans: Array<Object>, results: Array<Object>}} */
@@ -19,6 +20,52 @@
 
   function saveData() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    maybeAutoBackup();
+  }
+
+  function downloadBackup(filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function getAutoBackupSettings() {
+    try {
+      const raw = localStorage.getItem(AUTO_BACKUP_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) { /* ignore corrupted settings */ }
+    return { enabled: false, lastDate: null };
+  }
+
+  function setAutoBackupSettings(settings) {
+    localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify(settings));
+  }
+
+  // Downloads a real file into "Téléchargements" once per day, independent of browser storage.
+  // Fixed filename: browsers refuse to silently overwrite existing files for security reasons,
+  // so Android will still add "(1)", "(2)"... to repeat downloads of the same name.
+  function maybeAutoBackup() {
+    const settings = getAutoBackupSettings();
+    if (!settings.enabled) return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (settings.lastDate === today) return;
+    downloadBackup('suivi-trail-backup.json');
+    settings.lastDate = today;
+    setAutoBackupSettings(settings);
+    updateAutoBackupStatus();
+  }
+
+  function updateAutoBackupStatus() {
+    const settings = getAutoBackupSettings();
+    const status = document.getElementById('auto-backup-status');
+    if (!status) return;
+    status.textContent = settings.lastDate
+      ? `Dernière sauvegarde automatique : ${formatDate(settings.lastDate)}`
+      : 'Aucune sauvegarde automatique effectuée pour le moment.';
   }
 
   function uid() {
@@ -124,6 +171,10 @@
     }[c]));
   }
 
+  function mapsUrl(address) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  }
+
   // ---------- Planning ----------
   const formPlan = document.getElementById('form-plan');
   formPlan.addEventListener('submit', (e) => {
@@ -135,6 +186,7 @@
       date: fd.get('date'),
       distanceKm: fd.get('distanceKm') ? Number(fd.get('distanceKm')) : null,
       deniveleM: fd.get('deniveleM') ? Number(fd.get('deniveleM')) : null,
+      location: fd.get('location').trim() || null,
       reminderHours: fd.get('reminderHours') || null,
       notes: fd.get('notes').trim(),
       done: false,
@@ -171,6 +223,7 @@
           <div>
             <div class="item-title">${escapeHtml(p.name)} ${p.done ? '<span class="badge done">Réalisée</span>' : ''}</div>
             <div class="item-meta">${formatDateTime(p.date)}${p.distanceKm ? ` · ${p.distanceKm} km` : ''}${p.deniveleM ? ` · D+ ${p.deniveleM} m` : ''}</div>
+            ${p.location ? `<div class="item-meta">📍 ${escapeHtml(p.location)} · <a href="${mapsUrl(p.location)}" target="_blank" rel="noopener noreferrer">Voir sur Maps</a></div>` : ''}
           </div>
           <div class="item-btns">
             ${isUpcoming ? `<button class="secondary small btn-done">✓ Fait</button>` : ''}
@@ -321,15 +374,20 @@
 
   // ---------- Export / Import / Reset ----------
   document.getElementById('btn-export').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
     const today = new Date().toISOString().slice(0, 10);
-    a.href = url;
-    a.download = `suivi-trail-${today}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBackup(`suivi-trail-${today}.json`);
   });
+
+  const chkAutoBackup = document.getElementById('chk-auto-backup');
+  chkAutoBackup.checked = getAutoBackupSettings().enabled;
+  chkAutoBackup.addEventListener('change', () => {
+    const settings = getAutoBackupSettings();
+    settings.enabled = chkAutoBackup.checked;
+    setAutoBackupSettings(settings);
+    if (settings.enabled) maybeAutoBackup();
+    updateAutoBackupStatus();
+  });
+  updateAutoBackupStatus();
 
   document.getElementById('input-import').addEventListener('change', (e) => {
     const file = e.target.files[0];

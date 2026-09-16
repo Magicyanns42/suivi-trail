@@ -38,6 +38,9 @@
         <label>D+ (m)
           <input type="number" step="1" min="0" name="deniveleM" />
         </label>
+        <label class="full">Lieu / adresse
+          <input type="text" name="location" placeholder="Ex: Parking du Col des Aravis, 74450" />
+        </label>
         <label>Rappel avant
           <select name="reminderHours">
             <option value="">Aucun</option>
@@ -141,7 +144,7 @@
 
     <div class="card">
       <h2>💾 Sauvegarde des données</h2>
-      <p class="empty">Toutes tes données restent uniquement sur cet appareil. Exporte régulièrement une sauvegarde.</p>
+      <p class="empty">Toutes tes données restent sur cet appareil (dans le navigateur). Exporte régulièrement une sauvegarde pour la garder aussi en fichier, indépendamment du navigateur.</p>
       <div class="actions-row">
         <button id="btn-export" class="secondary">Exporter (JSON)</button>
         <label class="secondary" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:9px 14px;border-radius:8px;">
@@ -149,6 +152,11 @@
           <input type="file" id="input-import" accept="application/json" style="display:none" />
         </label>
       </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.85rem;">
+        <input type="checkbox" id="chk-auto-backup" style="width:auto;" />
+        Sauvegarde automatique quotidienne dans "Téléchargements"
+      </label>
+      <p class="empty" id="auto-backup-status"></p>
     </div>
 
     <div class="card">
