@@ -548,6 +548,86 @@
     if (plan) prefillResultFromPlan(plan);
   });
 
+  // ---------- Import GPX (Suunto, Garmin, etc.) ----------
+  function haversineKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function parseGpx(xmlText) {
+    const xml = new DOMParser().parseFromString(xmlText, 'application/xml');
+    if (xml.querySelector('parsererror')) throw new Error('Fichier GPX invalide ou corrompu.');
+
+    const trkpts = Array.from(xml.getElementsByTagName('trkpt')).map((pt) => {
+      const timeEl = pt.getElementsByTagName('time')[0];
+      const eleEl = pt.getElementsByTagName('ele')[0];
+      return {
+        lat: parseFloat(pt.getAttribute('lat')),
+        lon: parseFloat(pt.getAttribute('lon')),
+        ele: eleEl ? parseFloat(eleEl.textContent) : null,
+        time: timeEl ? new Date(timeEl.textContent) : null,
+      };
+    });
+    if (trkpts.length < 2) throw new Error('Aucune trace GPS exploitable dans ce fichier.');
+
+    let distanceKm = 0;
+    let deniveleM = 0;
+    for (let i = 1; i < trkpts.length; i++) {
+      const a = trkpts[i - 1];
+      const b = trkpts[i];
+      distanceKm += haversineKm(a.lat, a.lon, b.lat, b.lon);
+      if (a.ele !== null && b.ele !== null) {
+        const diff = b.ele - a.ele;
+        if (diff > 0.5) deniveleM += diff; // ignore tiny GPS noise
+      }
+    }
+
+    const times = trkpts.map((p) => p.time).filter(Boolean);
+    const nameEl = xml.querySelector('trk > name');
+    let temps = null;
+    if (times.length >= 2) {
+      const totalMin = (times[times.length - 1].getTime() - times[0].getTime()) / 60000;
+      const h = Math.floor(totalMin / 60);
+      const m = Math.round(totalMin % 60);
+      temps = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    return {
+      name: nameEl ? nameEl.textContent.trim() : null,
+      date: times.length ? times[0].toISOString().slice(0, 10) : null,
+      distanceKm: Math.round(distanceKm * 100) / 100,
+      deniveleM: Math.round(deniveleM),
+      temps,
+    };
+  }
+
+  document.getElementById('input-gpx').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = parseGpx(reader.result);
+        formResult.querySelector('[name="plannedId"]').value = '';
+        formResult.querySelector('[name="name"]').value = parsed.name || file.name.replace(/\.gpx$/i, '');
+        if (parsed.date) formResult.querySelector('[name="date"]').value = parsed.date;
+        if (parsed.distanceKm) formResult.querySelector('[name="distanceKm"]').value = parsed.distanceKm;
+        if (parsed.deniveleM) formResult.querySelector('[name="deniveleM"]').value = parsed.deniveleM;
+        if (parsed.temps) formResult.querySelector('[name="temps"]').value = parsed.temps;
+        formResult.scrollIntoView({ behavior: 'smooth' });
+        alert('Données importées : vérifie les champs puis complète le ressenti avant d\'enregistrer.');
+      } catch (err) {
+        alert('Import impossible : ' + err.message);
+      }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  });
+
   formResult.addEventListener('submit', (e) => {
     e.preventDefault();
     const fd = new FormData(formResult);

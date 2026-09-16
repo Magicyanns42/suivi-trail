@@ -81,6 +81,17 @@
   <!-- RESULTATS -->
   <section id="tab-results" class="tab-panel">
     <div class="card">
+      <h2>📥 Importer depuis Suunto / Garmin / autre montre</h2>
+      <p class="empty">Exporte ta sortie au format <strong>GPX</strong> depuis l'appli Suunto (Sortie → ⋮ → Exporter → GPX) puis importe le fichier ici. Les champs ci-dessous seront pré-remplis automatiquement.</p>
+      <div class="actions-row">
+        <label class="secondary" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:9px 14px;border-radius:8px;">
+          Choisir un fichier GPX
+          <input type="file" id="input-gpx" accept=".gpx,application/gpx+xml" style="display:none" />
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>➕ Ajouter un résultat</h2>
       <form id="form-result" class="form-grid">
         <label class="full">Lier à une sortie planifiée
