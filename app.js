@@ -346,22 +346,24 @@
           </div>
         </div>
         ${p.notes ? `<div class="item-notes">${escapeHtml(p.notes)}</div>` : ''}
-        ${checklist.length ? `
         <details class="checklist">
           <summary>🎒 Checklist (${checkedCount}/${checklist.length})</summary>
           <div class="checklist-items">
             ${checklist.map((c, idx) => `
-              <label class="checklist-item">
-                <input type="checkbox" data-check-idx="${idx}" ${c.checked ? 'checked' : ''} />
-                ${escapeHtml(c.label)}
-              </label>
+              <div class="checklist-item">
+                <label style="display:flex;align-items:center;gap:8px;flex:1;">
+                  <input type="checkbox" data-check-idx="${idx}" ${c.checked ? 'checked' : ''} />
+                  ${escapeHtml(c.label)}
+                </label>
+                <button type="button" class="danger small btn-del-check" data-check-idx="${idx}">✕</button>
+              </div>
             `).join('')}
             <div class="checklist-add">
               <input type="text" class="new-check-item" placeholder="Ajouter un élément" />
-              <button class="secondary small btn-add-check">+</button>
+              <button type="button" class="secondary small btn-add-check">+</button>
             </div>
           </div>
-        </details>` : ''}
+        </details>
       </div>
     `;
     }).join('');
@@ -426,6 +428,7 @@
       });
     });
     container.querySelectorAll('[data-check-idx]').forEach((chk) => {
+      if (chk.type !== 'checkbox') return;
       chk.addEventListener('change', (e) => {
         const id = e.target.closest('.item').dataset.id;
         const idx = Number(e.target.dataset.checkIdx);
@@ -439,11 +442,29 @@
         }
       });
     });
+    container.querySelectorAll('.btn-del-check').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const itemEl = e.target.closest('.item');
+        const id = itemEl.dataset.id;
+        const idx = Number(e.target.dataset.checkIdx);
+        const plan = data.plans.find((p) => p.id === id);
+        if (plan && plan.checklist[idx]) {
+          const wasOpen = itemEl.querySelector('.checklist').open;
+          plan.checklist.splice(idx, 1);
+          saveData();
+          renderPlanning();
+          if (wasOpen) {
+            const refreshed = container.querySelector(`.item[data-id="${id}"] .checklist`);
+            if (refreshed) refreshed.open = true;
+          }
+        }
+      });
+    });
     container.querySelectorAll('.btn-add-check').forEach((btn) => {
       btn.addEventListener('click', (e) => {
-        const item = e.target.closest('.item');
-        const id = item.dataset.id;
-        const input = item.querySelector('.new-check-item');
+        const itemEl = e.target.closest('.item');
+        const id = itemEl.dataset.id;
+        const input = itemEl.querySelector('.new-check-item');
         const label = input.value.trim();
         if (!label) return;
         const plan = data.plans.find((p) => p.id === id);
@@ -452,6 +473,8 @@
           plan.checklist.push({ label, checked: false });
           saveData();
           renderPlanning();
+          const refreshed = container.querySelector(`.item[data-id="${id}"] .checklist`);
+          if (refreshed) refreshed.open = true;
         }
       });
     });
