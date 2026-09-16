@@ -80,7 +80,7 @@
   document.getElementById('btn-enable-notif').addEventListener('click', requestNotifPermission);
   document.getElementById('btn-enable-notif-2').addEventListener('click', requestNotifPermission);
   document.getElementById('btn-test-notif').addEventListener('click', () => {
-    showNotification('Test de rappel 🏔️', { body: "Ceci est une notification de test.", icon: 'icons/icon.svg' });
+    showNotification('Test de rappel 🏔️', { body: "Ceci est une notification de test.", icon: 'icon-192.png' });
   });
 
   refreshNotifBanner();
@@ -94,7 +94,7 @@
       if (now >= reminderTime && now < eventTime) {
         showNotification(`Rappel : ${p.name}`, {
           body: `Prévu le ${formatDateTime(p.date)}${p.distanceKm ? ` — ${p.distanceKm} km` : ''}`,
-          icon: 'icons/icon.svg',
+          icon: 'icon-192.png',
           tag: 'trail-reminder-' + p.id,
         });
         p.reminded = true;
