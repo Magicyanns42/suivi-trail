@@ -142,6 +142,23 @@ button.small { padding: 5px 9px; font-size: 0.78rem; }
 }
 .badge.done { background: rgba(148,163,184,0.15); color: var(--muted); }
 
+.plan-collapsible { padding: 0; overflow: hidden; }
+.plan-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+}
+.plan-summary::-webkit-details-marker { display: none; }
+.plan-summary-title { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-summary-icons { font-size: 0.85rem; flex-shrink: 0; }
+.plan-summary-date { color: var(--muted); font-size: 0.78rem; flex-shrink: 0; }
+.plan-summary-chevron { color: var(--muted); transition: transform 0.15s ease; flex-shrink: 0; }
+.plan-collapsible[open] .plan-summary-chevron { transform: rotate(180deg); }
+.plan-details { padding: 0 10px 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+
 .empty { color: var(--muted); font-size: 0.85rem; padding: 8px 0; }
 
 .stats-grid {

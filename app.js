@@ -484,23 +484,8 @@
     container.innerHTML = items.map((p) => {
       const checklist = p.checklist || [];
       const checkedCount = checklist.filter((c) => c.checked).length;
-      return `
-      <div class="item" data-id="${p.id}">
-        <div class="item-top">
-          <div>
-            <div class="item-title">${p.isRace ? '🏆 ' : ''}${escapeHtml(p.name)} ${p.done ? '<span class="badge done">Réalisée</span>' : ''}</div>
-            <div class="item-meta">${formatDateTime(p.date)}${p.distanceKm ? ` · ${p.distanceKm} km` : ''}${p.deniveleM ? ` · D+ ${p.deniveleM} m` : ''}</div>
-            ${p.location ? `<div class="item-meta">📍 ${escapeHtml(p.location)} · <a href="${mapsUrl(p.location)}" target="_blank" rel="noopener noreferrer">Voir sur Maps</a>${isUpcoming ? ` · <a href="${weatherUrl(p.location, p.date)}" target="_blank" rel="noopener noreferrer">🌦️ Météo</a>` : ''}</div>` : ''}
-          </div>
-          <div class="item-btns">
-            ${isUpcoming && p.isRace ? `<button class="secondary small btn-gen-plan">📋 Plan</button>` : ''}
-            ${isUpcoming ? `<button class="secondary small btn-done">✓ Fait</button>` : ''}
-            ${!isUpcoming && p.done ? `<button class="secondary small btn-undone">↩️ Annuler</button>` : ''}
-            <button class="secondary small btn-edit">✏️</button>
-            <button class="danger small btn-del">🗑</button>
-          </div>
-        </div>
-        ${p.notes ? `<div class="item-notes">${escapeHtml(p.notes)}</div>` : ''}
+
+      const checklistHtml = `
         <details class="checklist">
           <summary>🎒 Checklist (${checkedCount}/${checklist.length})</summary>
           <div class="checklist-items">
@@ -519,6 +504,56 @@
             </div>
           </div>
         </details>
+      `;
+
+      if (isUpcoming) {
+        const shortDate = new Date(p.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+        const icons = [
+          p.location ? '📍' : '',
+          p.distanceKm ? '📏' : '',
+          p.deniveleM ? '⛰️' : '',
+          checklist.length ? '🎒' : '',
+        ].filter(Boolean).join(' ');
+        return `
+        <details class="item plan-collapsible" data-id="${p.id}">
+          <summary class="plan-summary">
+            <span class="plan-summary-title">${p.isRace ? '🏆 ' : ''}${escapeHtml(p.name)}</span>
+            <span class="plan-summary-icons">${icons}</span>
+            <span class="plan-summary-date">${shortDate}</span>
+            <span class="plan-summary-chevron">▾</span>
+          </summary>
+          <div class="plan-details">
+            <div class="item-meta">${formatDateTime(p.date)}${p.distanceKm ? ` · ${p.distanceKm} km` : ''}${p.deniveleM ? ` · D+ ${p.deniveleM} m` : ''}</div>
+            ${p.location ? `<div class="item-meta">📍 ${escapeHtml(p.location)} · <a href="${mapsUrl(p.location)}" target="_blank" rel="noopener noreferrer">Voir sur Maps</a> · <a href="${weatherUrl(p.location, p.date)}" target="_blank" rel="noopener noreferrer">🌦️ Météo</a></div>` : ''}
+            ${p.notes ? `<div class="item-notes">${escapeHtml(p.notes)}</div>` : ''}
+            <div class="item-btns" style="margin-top:8px;">
+              ${p.isRace ? `<button class="secondary small btn-gen-plan">📋 Plan</button>` : ''}
+              <button class="secondary small btn-done">✓ Fait</button>
+              <button class="secondary small btn-edit">✏️</button>
+              <button class="danger small btn-del">🗑</button>
+            </div>
+            ${checklistHtml}
+          </div>
+        </details>
+      `;
+      }
+
+      return `
+      <div class="item" data-id="${p.id}">
+        <div class="item-top">
+          <div>
+            <div class="item-title">${p.isRace ? '🏆 ' : ''}${escapeHtml(p.name)} ${p.done ? '<span class="badge done">Réalisée</span>' : ''}</div>
+            <div class="item-meta">${formatDateTime(p.date)}${p.distanceKm ? ` · ${p.distanceKm} km` : ''}${p.deniveleM ? ` · D+ ${p.deniveleM} m` : ''}</div>
+            ${p.location ? `<div class="item-meta">📍 ${escapeHtml(p.location)} · <a href="${mapsUrl(p.location)}" target="_blank" rel="noopener noreferrer">Voir sur Maps</a></div>` : ''}
+          </div>
+          <div class="item-btns">
+            ${p.done ? `<button class="secondary small btn-undone">↩️ Annuler</button>` : ''}
+            <button class="secondary small btn-edit">✏️</button>
+            <button class="danger small btn-del">🗑</button>
+          </div>
+        </div>
+        ${p.notes ? `<div class="item-notes">${escapeHtml(p.notes)}</div>` : ''}
+        ${checklistHtml}
       </div>
     `;
     }).join('');
