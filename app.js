@@ -806,6 +806,35 @@
   }
 
   let pendingGpxTrack = null;
+  let pendingPhotoDataUrl = null;
+
+  document.getElementById('input-photo').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      loadImage(reader.result).then((img) => {
+        const maxW = 1000;
+        const scale = Math.min(1, maxW / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        pendingPhotoDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        document.getElementById('photo-preview-img').src = pendingPhotoDataUrl;
+        document.getElementById('photo-preview').style.display = '';
+      }).catch(() => alert('Impossible de charger cette image.'));
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  });
+
+  document.getElementById('btn-remove-photo').addEventListener('click', () => {
+    pendingPhotoDataUrl = null;
+    document.getElementById('photo-preview').style.display = 'none';
+    document.getElementById('photo-preview-img').src = '';
+  });
 
   document.getElementById('input-gpx').addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -851,8 +880,12 @@
       notes: fd.get('notes').trim(),
       track: pendingGpxTrack ? pendingGpxTrack.track : null,
       elevations: pendingGpxTrack ? pendingGpxTrack.elevations : null,
+      photo: pendingPhotoDataUrl,
     };
     pendingGpxTrack = null;
+    pendingPhotoDataUrl = null;
+    document.getElementById('photo-preview').style.display = 'none';
+    document.getElementById('photo-preview-img').src = '';
     data.results.push(result);
     if (result.plannedId) {
       const plan = data.plans.find((p) => p.id === result.plannedId);
@@ -901,6 +934,7 @@
           </div>
         </div>
         ${r.notes ? `<div class="item-notes">${escapeHtml(r.notes)}</div>` : ''}
+        ${r.photo ? `<img class="result-photo" src="${r.photo}" alt="Photo de ${escapeHtml(r.name)}" />` : ''}
         ${(hasTrack || hasElevations) ? `
         <div class="result-charts">
           ${hasTrack ? `<div class="chart-block"><div class="chart-title">Tracé</div><canvas id="track-${r.id}" width="300" height="120"></canvas></div>` : ''}
@@ -935,10 +969,7 @@
     });
   }
 
-  function drawRouteShape(canvasId, track) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    const { ctx, width, height } = setupCanvas(canvas, 120);
+  function drawRouteShapeOnCtx(ctx, offsetX0, offsetY0, width, height, track) {
     const pad = 10;
     const avgLat = track.reduce((s, p) => s + p[0], 0) / track.length;
     const latRad = avgLat * Math.PI / 180;
@@ -950,8 +981,8 @@
     const rangeX = maxX - minX || 1;
     const rangeY = maxY - minY || 1;
     const scale = Math.min((width - pad * 2) / rangeX, (height - pad * 2) / rangeY);
-    const offsetX = pad + ((width - pad * 2) - rangeX * scale) / 2;
-    const offsetY = pad + ((height - pad * 2) - rangeY * scale) / 2;
+    const offsetX = offsetX0 + pad + ((width - pad * 2) - rangeX * scale) / 2;
+    const offsetY = offsetY0 + pad + ((height - pad * 2) - rangeY * scale) / 2;
 
     ctx.strokeStyle = '#22c55e';
     ctx.lineWidth = 2;
@@ -970,10 +1001,7 @@
     ctx.fill();
   }
 
-  function drawElevationProfile(canvasId, elevations) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    const { ctx, width, height } = setupCanvas(canvas, 90);
+  function drawElevationProfileOnCtx(ctx, offsetX, offsetY, width, height, elevations) {
     const padTop = 8;
     const padBottom = 4;
     const min = Math.min(...elevations);
@@ -984,13 +1012,13 @@
 
     ctx.fillStyle = 'rgba(250,204,21,0.2)';
     ctx.beginPath();
-    ctx.moveTo(0, height - padBottom);
+    ctx.moveTo(offsetX, offsetY + height - padBottom);
     elevations.forEach((e, i) => {
-      const x = i * stepX;
-      const y = padTop + (1 - (e - min) / range) * plotHeight;
+      const x = offsetX + i * stepX;
+      const y = offsetY + padTop + (1 - (e - min) / range) * plotHeight;
       ctx.lineTo(x, y);
     });
-    ctx.lineTo(width, height - padBottom);
+    ctx.lineTo(offsetX + width, offsetY + height - padBottom);
     ctx.closePath();
     ctx.fill();
 
@@ -998,33 +1026,87 @@
     ctx.lineWidth = 2;
     ctx.beginPath();
     elevations.forEach((e, i) => {
-      const x = i * stepX;
-      const y = padTop + (1 - (e - min) / range) * plotHeight;
+      const x = offsetX + i * stepX;
+      const y = offsetY + padTop + (1 - (e - min) / range) * plotHeight;
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
     ctx.stroke();
   }
 
+  function drawRouteShape(canvasId, track) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const { ctx, width, height } = setupCanvas(canvas, 120);
+    drawRouteShapeOnCtx(ctx, 0, 0, width, height, track);
+  }
+
+  function drawElevationProfile(canvasId, elevations) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const { ctx, width, height } = setupCanvas(canvas, 90);
+    drawElevationProfileOnCtx(ctx, 0, 0, width, height, elevations);
+  }
+
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
   // ---------- Partage résultat ----------
-  function buildResultShareImage(result) {
+  async function buildResultShareImage(result) {
+    const width = 800;
+    const hasPhoto = !!result.photo;
+    const hasTrack = result.track && result.track.length > 1;
+    const hasElevations = result.elevations && result.elevations.length > 1;
+    const hasVisuals = hasTrack || hasElevations;
+
+    const photoHeight = hasPhoto ? 280 : 0;
+    const headerHeight = 110;
+    const statsHeight = 120;
+    const visualsHeight = hasVisuals ? 220 : 0;
+    const ressentiHeight = 60;
+    const height = photoHeight + headerHeight + statsHeight + visualsHeight + ressentiHeight;
+
+    let photoImg = null;
+    if (hasPhoto) {
+      try { photoImg = await loadImage(result.photo); } catch (e) { photoImg = null; }
+    }
+
     const canvas = document.createElement('canvas');
-    canvas.width = 800;
-    canvas.height = 450;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext('2d');
 
     ctx.fillStyle = '#0f172a';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, width, height);
+
+    let cursorY = 0;
+    if (photoImg) {
+      const scale = Math.max(width / photoImg.width, photoHeight / photoImg.height);
+      const sw = width / scale;
+      const sh = photoHeight / scale;
+      const sx = (photoImg.width - sw) / 2;
+      const sy = (photoImg.height - sh) / 2;
+      ctx.drawImage(photoImg, sx, sy, sw, sh, 0, 0, width, photoHeight);
+      cursorY += photoHeight;
+    }
+
     ctx.fillStyle = '#facc15';
-    ctx.font = 'bold 22px system-ui, sans-serif';
-    ctx.fillText('🏔️ Suivi Trail', 32, 50);
+    ctx.font = 'bold 20px system-ui, sans-serif';
+    ctx.fillText('🏔️ Suivi Trail', 32, cursorY + 34);
 
     ctx.fillStyle = '#e2e8f0';
-    ctx.font = 'bold 34px system-ui, sans-serif';
-    wrapText(ctx, result.name, 32, 110, 736, 40);
+    ctx.font = 'bold 30px system-ui, sans-serif';
+    wrapText(ctx, result.name, 32, cursorY + 72, width - 64, 34);
 
-    ctx.font = '20px system-ui, sans-serif';
+    ctx.font = '18px system-ui, sans-serif';
     ctx.fillStyle = '#94a3b8';
-    ctx.fillText(formatDate(result.date), 32, 155);
+    ctx.fillText(formatDate(result.date), 32, cursorY + headerHeight - 10);
+    cursorY += headerHeight;
 
     const pace = formatPace(result.distanceKm, result.temps);
     const stats = [
@@ -1034,22 +1116,42 @@
       pace ? [pace, 'Allure'] : null,
     ].filter(Boolean);
 
-    const boxWidth = 736 / Math.max(stats.length, 1);
+    const boxWidth = (width - 64) / Math.max(stats.length, 1);
     stats.forEach((s, i) => {
       const x = 32 + i * boxWidth;
       ctx.fillStyle = 'rgba(34,197,94,0.12)';
-      ctx.fillRect(x, 200, boxWidth - 12, 100);
+      ctx.fillRect(x, cursorY, boxWidth - 12, statsHeight - 20);
       ctx.fillStyle = '#22c55e';
       ctx.font = 'bold 26px system-ui, sans-serif';
-      ctx.fillText(s[0], x + 12, 245);
+      ctx.fillText(s[0], x + 12, cursorY + 45);
       ctx.fillStyle = '#94a3b8';
       ctx.font = '14px system-ui, sans-serif';
-      ctx.fillText(s[1], x + 12, 275);
+      ctx.fillText(s[1], x + 12, cursorY + 75);
     });
+    cursorY += statsHeight;
+
+    if (hasVisuals) {
+      const gap = 16;
+      const half = (width - 64 - gap) / 2;
+      const boxH = visualsHeight - 30;
+      if (hasTrack) {
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(32, cursorY, half, boxH);
+        drawRouteShapeOnCtx(ctx, 32, cursorY, half, boxH, result.track);
+      }
+      if (hasElevations) {
+        const x2 = 32 + (hasTrack ? half + gap : 0);
+        const w2 = hasTrack ? half : width - 64;
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(x2, cursorY, w2, boxH);
+        drawElevationProfileOnCtx(ctx, x2, cursorY, w2, boxH, result.elevations);
+      }
+      cursorY += visualsHeight;
+    }
 
     ctx.fillStyle = '#e2e8f0';
     ctx.font = '22px system-ui, sans-serif';
-    ctx.fillText(RESSENTI_LABELS[result.ressenti] || '', 32, 350);
+    ctx.fillText(RESSENTI_LABELS[result.ressenti] || '', 32, cursorY + 30);
 
     return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   }

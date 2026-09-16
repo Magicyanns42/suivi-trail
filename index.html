@@ -166,6 +166,14 @@
         <label class="full">Notes
           <textarea name="notes" placeholder="Sensations, météo, points à améliorer..."></textarea>
         </label>
+        <label class="full">Photo (optionnelle)
+          <input type="file" accept="image/*" id="input-photo" />
+        </label>
+        <p class="empty full" style="margin:0;">La photo est compressée automatiquement. Évite d'en ajouter à toutes tes sorties si tu as beaucoup de résultats (limite de stockage du navigateur).</p>
+        <div id="photo-preview" class="full" style="display:none;">
+          <img id="photo-preview-img" style="max-width:100%;border-radius:8px;display:block;" />
+          <button type="button" id="btn-remove-photo" class="danger small" style="margin-top:6px;">Supprimer la photo</button>
+        </div>
         <div class="actions-row full">
           <button type="submit" class="primary">Enregistrer le résultat</button>
         </div>
