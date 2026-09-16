@@ -814,8 +814,13 @@
     reader.onload = () => {
       try {
         const parsed = parseGpx(reader.result);
-        formResult.querySelector('[name="plannedId"]').value = '';
-        formResult.querySelector('[name="name"]').value = parsed.name || file.name.replace(/\.gpx$/i, '');
+        // Auto-link to a planned outing scheduled the same day, if any.
+        const matchedPlan = parsed.date
+          ? data.plans.find((p) => toDateKey(p.date) === parsed.date)
+          : null;
+        formResult.querySelector('[name="plannedId"]').value = matchedPlan ? matchedPlan.id : '';
+        formResult.querySelector('[name="name"]').value =
+          parsed.name || (matchedPlan ? matchedPlan.name : null) || file.name.replace(/\.gpx$/i, '');
         if (parsed.date) formResult.querySelector('[name="date"]').value = parsed.date;
         if (parsed.distanceKm) formResult.querySelector('[name="distanceKm"]').value = parsed.distanceKm;
         if (parsed.deniveleM) formResult.querySelector('[name="deniveleM"]').value = parsed.deniveleM;
