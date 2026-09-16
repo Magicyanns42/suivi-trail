@@ -558,6 +558,33 @@
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
+  // Smooths noisy 1Hz elevation data then uses a hysteresis threshold to avoid
+  // counting barometric/GPS noise as real climbing (naive diff-sum wildly over/under-estimates D+).
+  function computeElevationGain(elevations) {
+    if (elevations.length < 3) return 0;
+    const windowSize = 9;
+    const half = Math.floor(windowSize / 2);
+    const smoothed = elevations.map((_, i) => {
+      const start = Math.max(0, i - half);
+      const end = Math.min(elevations.length, i + half + 1);
+      const slice = elevations.slice(start, end);
+      return slice.reduce((a, b) => a + b, 0) / slice.length;
+    });
+    const threshold = 1.5; // meters; ignore fluctuations smaller than this
+    let gain = 0;
+    let baseline = smoothed[0];
+    for (let i = 1; i < smoothed.length; i++) {
+      const diff = smoothed[i] - baseline;
+      if (diff > threshold) {
+        gain += diff;
+        baseline = smoothed[i];
+      } else if (diff < -threshold) {
+        baseline = smoothed[i];
+      }
+    }
+    return Math.round(gain);
+  }
+
   function parseGpx(xmlText) {
     const xml = new DOMParser().parseFromString(xmlText, 'application/xml');
     if (xml.querySelector('parsererror')) throw new Error('Fichier GPX invalide ou corrompu.');
@@ -575,16 +602,13 @@
     if (trkpts.length < 2) throw new Error('Aucune trace GPS exploitable dans ce fichier.');
 
     let distanceKm = 0;
-    let deniveleM = 0;
     for (let i = 1; i < trkpts.length; i++) {
       const a = trkpts[i - 1];
       const b = trkpts[i];
       distanceKm += haversineKm(a.lat, a.lon, b.lat, b.lon);
-      if (a.ele !== null && b.ele !== null) {
-        const diff = b.ele - a.ele;
-        if (diff > 0.5) deniveleM += diff; // ignore tiny GPS noise
-      }
     }
+    const elevations = trkpts.map((p) => p.ele).filter((e) => e !== null);
+    const deniveleM = computeElevationGain(elevations);
 
     const times = trkpts.map((p) => p.time).filter(Boolean);
     const nameEl = xml.querySelector('trk > name');
@@ -600,7 +624,7 @@
       name: nameEl ? nameEl.textContent.trim() : null,
       date: times.length ? times[0].toISOString().slice(0, 10) : null,
       distanceKm: Math.round(distanceKm * 100) / 100,
-      deniveleM: Math.round(deniveleM),
+      deniveleM,
       temps,
     };
   }
