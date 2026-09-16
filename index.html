@@ -130,7 +130,7 @@
   <div id="result-modal-overlay" class="modal-overlay">
     <div class="modal-card">
       <div class="modal-header">
-        <h2 style="margin:0;">➕ Ajouter un résultat</h2>
+        <h2 id="form-result-title" style="margin:0;">➕ Ajouter un résultat</h2>
         <button type="button" id="btn-close-result-modal" class="modal-close" aria-label="Fermer">✕</button>
       </div>
       <form id="form-result" class="form-grid">
@@ -175,7 +175,8 @@
           <button type="button" id="btn-remove-photo" class="danger small" style="margin-top:6px;">Supprimer la photo</button>
         </div>
         <div class="actions-row full">
-          <button type="submit" class="primary">Enregistrer le résultat</button>
+          <button type="submit" id="btn-submit-result" class="primary">Enregistrer le résultat</button>
+          <button type="button" id="btn-cancel-edit-result" class="secondary" style="display:none;">Annuler la modification</button>
         </div>
       </form>
     </div>

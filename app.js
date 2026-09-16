@@ -694,15 +694,73 @@
   const selectPlannedId = formResult.querySelector('[name="plannedId"]');
   const resultModalOverlay = document.getElementById('result-modal-overlay');
   const importModalOverlay = document.getElementById('import-modal-overlay');
+  const formResultTitle = document.getElementById('form-result-title');
+  const btnSubmitResult = document.getElementById('btn-submit-result');
+  const btnCancelEditResult = document.getElementById('btn-cancel-edit-result');
+  let editingResultId = null;
 
   function openResultModal() { resultModalOverlay.classList.add('open'); }
   function closeResultModal() { resultModalOverlay.classList.remove('open'); }
   function openImportModal() { importModalOverlay.classList.add('open'); }
   function closeImportModal() { importModalOverlay.classList.remove('open'); }
 
-  document.getElementById('btn-open-result-modal').addEventListener('click', openResultModal);
-  document.getElementById('btn-close-result-modal').addEventListener('click', closeResultModal);
-  resultModalOverlay.addEventListener('click', (e) => { if (e.target === resultModalOverlay) closeResultModal(); });
+  function resetResultForm() {
+    editingResultId = null;
+    pendingGpxTrack = null;
+    pendingPhotoDataUrl = null;
+    photoRemoved = false;
+    formResult.reset();
+    formResult.querySelector('[name="ressenti"]').value = '3';
+    document.getElementById('photo-preview').style.display = 'none';
+    document.getElementById('photo-preview-img').src = '';
+    formResultTitle.textContent = '➕ Ajouter un résultat';
+    btnSubmitResult.textContent = 'Enregistrer le résultat';
+    btnCancelEditResult.style.display = 'none';
+  }
+
+  function startEditResult(result) {
+    editingResultId = result.id;
+    pendingGpxTrack = null;
+    pendingPhotoDataUrl = null;
+    photoRemoved = false;
+    formResult.querySelector('[name="plannedId"]').value = result.plannedId || '';
+    formResult.querySelector('[name="name"]').value = result.name;
+    formResult.querySelector('[name="date"]').value = result.date;
+    formResult.querySelector('[name="distanceKm"]').value = result.distanceKm ?? '';
+    formResult.querySelector('[name="deniveleM"]').value = result.deniveleM ?? '';
+    formResult.querySelector('[name="temps"]').value = result.temps ?? '';
+    formResult.querySelector('[name="ressenti"]').value = result.ressenti;
+    formResult.querySelector('[name="notes"]').value = result.notes ?? '';
+    if (result.photo) {
+      document.getElementById('photo-preview-img').src = result.photo;
+      document.getElementById('photo-preview').style.display = '';
+    } else {
+      document.getElementById('photo-preview').style.display = 'none';
+    }
+    formResultTitle.textContent = '✏️ Modifier le résultat';
+    btnSubmitResult.textContent = 'Enregistrer les modifications';
+    btnCancelEditResult.style.display = '';
+    openResultModal();
+  }
+
+  document.getElementById('btn-open-result-modal').addEventListener('click', () => {
+    resetResultForm();
+    openResultModal();
+  });
+  document.getElementById('btn-close-result-modal').addEventListener('click', () => {
+    resetResultForm();
+    closeResultModal();
+  });
+  btnCancelEditResult.addEventListener('click', () => {
+    resetResultForm();
+    closeResultModal();
+  });
+  resultModalOverlay.addEventListener('click', (e) => {
+    if (e.target === resultModalOverlay) {
+      resetResultForm();
+      closeResultModal();
+    }
+  });
 
   document.getElementById('btn-open-import-modal').addEventListener('click', openImportModal);
   document.getElementById('btn-close-import-modal').addEventListener('click', closeImportModal);
@@ -807,6 +865,7 @@
 
   let pendingGpxTrack = null;
   let pendingPhotoDataUrl = null;
+  let photoRemoved = false;
 
   document.getElementById('input-photo').addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -814,17 +873,25 @@
     const reader = new FileReader();
     reader.onload = () => {
       loadImage(reader.result).then((img) => {
+        if (!img.naturalWidth || !img.naturalHeight) {
+          throw new Error('Format image non supporté.');
+        }
         const maxW = 1000;
-        const scale = Math.min(1, maxW / img.width);
+        const scale = Math.min(1, maxW / img.naturalWidth);
         const canvas = document.createElement('canvas');
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
         const ctx = canvas.getContext('2d');
+        // White backdrop: JPEG has no alpha channel, so any transparent source pixels
+        // would otherwise turn black once exported as JPEG.
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        pendingPhotoDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        pendingPhotoDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        photoRemoved = false;
         document.getElementById('photo-preview-img').src = pendingPhotoDataUrl;
         document.getElementById('photo-preview').style.display = '';
-      }).catch(() => alert('Impossible de charger cette image.'));
+      }).catch(() => alert('Impossible de charger cette image (essaie un JPEG ou PNG).'));
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -832,6 +899,7 @@
 
   document.getElementById('btn-remove-photo').addEventListener('click', () => {
     pendingPhotoDataUrl = null;
+    photoRemoved = true;
     document.getElementById('photo-preview').style.display = 'none';
     document.getElementById('photo-preview-img').src = '';
   });
@@ -868,8 +936,7 @@
   formResult.addEventListener('submit', (e) => {
     e.preventDefault();
     const fd = new FormData(formResult);
-    const result = {
-      id: uid(),
+    const fields = {
       plannedId: fd.get('plannedId') || null,
       name: fd.get('name').trim(),
       date: fd.get('date'),
@@ -878,22 +945,47 @@
       temps: fd.get('temps').trim() || null,
       ressenti: Number(fd.get('ressenti')),
       notes: fd.get('notes').trim(),
+    };
+
+    if (editingResultId) {
+      const result = data.results.find((r) => r.id === editingResultId);
+      if (result) {
+        Object.assign(result, fields);
+        if (pendingGpxTrack) {
+          result.track = pendingGpxTrack.track;
+          result.elevations = pendingGpxTrack.elevations;
+        }
+        if (pendingPhotoDataUrl) result.photo = pendingPhotoDataUrl;
+        else if (photoRemoved) result.photo = null;
+        if (result.plannedId) {
+          const plan = data.plans.find((p) => p.id === result.plannedId);
+          if (plan) plan.done = true;
+        }
+        saveData();
+      }
+      resetResultForm();
+      closeResultModal();
+      renderResults();
+      renderPlanning();
+      renderResultForm();
+      renderStats();
+      return;
+    }
+
+    const result = {
+      id: uid(),
+      ...fields,
       track: pendingGpxTrack ? pendingGpxTrack.track : null,
       elevations: pendingGpxTrack ? pendingGpxTrack.elevations : null,
       photo: pendingPhotoDataUrl,
     };
-    pendingGpxTrack = null;
-    pendingPhotoDataUrl = null;
-    document.getElementById('photo-preview').style.display = 'none';
-    document.getElementById('photo-preview-img').src = '';
     data.results.push(result);
     if (result.plannedId) {
       const plan = data.plans.find((p) => p.id === result.plannedId);
       if (plan) plan.done = true;
     }
     saveData();
-    formResult.reset();
-    formResult.querySelector('[name="ressenti"]').value = '3';
+    resetResultForm();
     closeResultModal();
     renderResults();
     renderPlanning();
@@ -930,6 +1022,7 @@
           </div>
           <div class="item-btns">
             <button class="secondary small btn-share">📤</button>
+            <button class="secondary small btn-edit-result">✏️</button>
             <button class="danger small btn-del">🗑</button>
           </div>
         </div>
@@ -960,6 +1053,13 @@
         const id = e.target.closest('.item').dataset.id;
         const result = data.results.find((r) => r.id === id);
         if (result) shareResult(result);
+      });
+    });
+    container.querySelectorAll('.btn-edit-result').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.closest('.item').dataset.id;
+        const result = data.results.find((r) => r.id === id);
+        if (result) startEditResult(result);
       });
     });
 
@@ -1050,7 +1150,11 @@
   function loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => resolve(img);
+      img.onload = () => {
+        // decode() ensures the bitmap is fully ready before we draw it to a canvas.
+        if (img.decode) img.decode().then(() => resolve(img)).catch(() => resolve(img));
+        else resolve(img);
+      };
       img.onerror = reject;
       img.src = src;
     });
