@@ -41,6 +41,10 @@
         <label class="full">Lieu / adresse
           <input type="text" name="location" placeholder="Ex: Parking du Col des Aravis, 74450" />
         </label>
+        <label style="flex-direction:row;align-items:center;gap:8px;">
+          <input type="checkbox" name="isRace" style="width:auto;" />
+          🏆 Course officielle
+        </label>
         <label>Rappel avant
           <select name="reminderHours">
             <option value="">Aucun</option>
@@ -59,6 +63,8 @@
         </div>
       </form>
     </div>
+
+    <div id="race-countdown"></div>
 
     <div class="card">
       <h2>📅 Sorties à venir</h2>

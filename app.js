@@ -175,11 +175,44 @@
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
   }
 
+  function weatherUrl(location, dateIso) {
+    const dateLabel = formatDate(dateIso);
+    return `https://www.google.com/search?q=${encodeURIComponent(`météo ${location} ${dateLabel}`)}`;
+  }
+
+  // Parses "hh:mm" or "h:mm:ss" into total minutes, or null if invalid/empty.
+  function parseTempsToMinutes(temps) {
+    if (!temps) return null;
+    const parts = temps.split(':').map(Number);
+    if (parts.some((n) => isNaN(n))) return null;
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 60 + parts[1] + parts[2] / 60;
+    return null;
+  }
+
+  function formatPace(distanceKm, temps) {
+    const minutes = parseTempsToMinutes(temps);
+    if (!minutes || !distanceKm) return null;
+    const paceMin = minutes / distanceKm;
+    const min = Math.floor(paceMin);
+    const sec = Math.round((paceMin - min) * 60);
+    return `${min}:${String(sec).padStart(2, '0')} /km`;
+  }
+
+  const DEFAULT_CHECKLIST = ['Lampe frontale', 'Gels / barres', 'Gourde ou flasks', 'Veste imperméable', 'Téléphone chargé', 'Trousse de secours'];
+  const RACE_CHECKLIST_EXTRA = ['Dossard', 'Puce de chronométrage'];
+
+  function buildDefaultChecklist(isRace) {
+    const labels = isRace ? [...DEFAULT_CHECKLIST, ...RACE_CHECKLIST_EXTRA] : DEFAULT_CHECKLIST;
+    return labels.map((label) => ({ label, checked: false }));
+  }
+
   // ---------- Planning ----------
   const formPlan = document.getElementById('form-plan');
   formPlan.addEventListener('submit', (e) => {
     e.preventDefault();
     const fd = new FormData(formPlan);
+    const isRace = fd.get('isRace') === 'on';
     const plan = {
       id: uid(),
       name: fd.get('name').trim(),
@@ -187,6 +220,8 @@
       distanceKm: fd.get('distanceKm') ? Number(fd.get('distanceKm')) : null,
       deniveleM: fd.get('deniveleM') ? Number(fd.get('deniveleM')) : null,
       location: fd.get('location').trim() || null,
+      isRace,
+      checklist: buildDefaultChecklist(isRace),
       reminderHours: fd.get('reminderHours') || null,
       notes: fd.get('notes').trim(),
       done: false,
@@ -207,8 +242,29 @@
     const past = data.plans.filter((p) => p.done || new Date(p.date).getTime() < now)
       .sort((a, b) => new Date(b.date) - new Date(a.date));
 
+    renderCountdown(upcoming);
     renderPlanList('list-planning-upcoming', upcoming, true);
     renderPlanList('list-planning-past', past, false);
+  }
+
+  function renderCountdown(upcoming) {
+    const container = document.getElementById('race-countdown');
+    const nextRace = upcoming.find((p) => p.isRace);
+    if (!nextRace) {
+      container.innerHTML = '';
+      return;
+    }
+    const now = Date.now();
+    const raceTime = new Date(nextRace.date).getTime();
+    const days = Math.ceil((raceTime - now) / (24 * 3600 * 1000));
+    container.innerHTML = `
+      <div class="countdown-card">
+        <div class="cd-label">Prochaine course</div>
+        <div class="cd-name">🏆 ${escapeHtml(nextRace.name)}</div>
+        <div class="cd-days">${days <= 0 ? "C'est aujourd'hui !" : `J-${days}`}</div>
+        <div class="cd-sub">${formatDateTime(nextRace.date)}${nextRace.location ? ` · ${escapeHtml(nextRace.location)}` : ''}</div>
+      </div>
+    `;
   }
 
   function renderPlanList(containerId, items, isUpcoming) {
@@ -217,22 +273,43 @@
       container.innerHTML = `<div class="empty">${isUpcoming ? 'Aucune sortie planifiée.' : 'Aucune sortie passée.'}</div>`;
       return;
     }
-    container.innerHTML = items.map((p) => `
+    container.innerHTML = items.map((p) => {
+      const checklist = p.checklist || [];
+      const checkedCount = checklist.filter((c) => c.checked).length;
+      return `
       <div class="item" data-id="${p.id}">
         <div class="item-top">
           <div>
-            <div class="item-title">${escapeHtml(p.name)} ${p.done ? '<span class="badge done">Réalisée</span>' : ''}</div>
+            <div class="item-title">${p.isRace ? '🏆 ' : ''}${escapeHtml(p.name)} ${p.done ? '<span class="badge done">Réalisée</span>' : ''}</div>
             <div class="item-meta">${formatDateTime(p.date)}${p.distanceKm ? ` · ${p.distanceKm} km` : ''}${p.deniveleM ? ` · D+ ${p.deniveleM} m` : ''}</div>
-            ${p.location ? `<div class="item-meta">📍 ${escapeHtml(p.location)} · <a href="${mapsUrl(p.location)}" target="_blank" rel="noopener noreferrer">Voir sur Maps</a></div>` : ''}
+            ${p.location ? `<div class="item-meta">📍 ${escapeHtml(p.location)} · <a href="${mapsUrl(p.location)}" target="_blank" rel="noopener noreferrer">Voir sur Maps</a>${isUpcoming ? ` · <a href="${weatherUrl(p.location, p.date)}" target="_blank" rel="noopener noreferrer">🌦️ Météo</a>` : ''}</div>` : ''}
           </div>
           <div class="item-btns">
+            ${isUpcoming && p.isRace ? `<button class="secondary small btn-gen-plan">📋 Plan</button>` : ''}
             ${isUpcoming ? `<button class="secondary small btn-done">✓ Fait</button>` : ''}
             <button class="danger small btn-del">🗑</button>
           </div>
         </div>
         ${p.notes ? `<div class="item-notes">${escapeHtml(p.notes)}</div>` : ''}
+        ${checklist.length ? `
+        <details class="checklist">
+          <summary>🎒 Checklist (${checkedCount}/${checklist.length})</summary>
+          <div class="checklist-items">
+            ${checklist.map((c, idx) => `
+              <label class="checklist-item">
+                <input type="checkbox" data-check-idx="${idx}" ${c.checked ? 'checked' : ''} />
+                ${escapeHtml(c.label)}
+              </label>
+            `).join('')}
+            <div class="checklist-add">
+              <input type="text" class="new-check-item" placeholder="Ajouter un élément" />
+              <button class="secondary small btn-add-check">+</button>
+            </div>
+          </div>
+        </details>` : ''}
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     container.querySelectorAll('.btn-del').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -261,6 +338,93 @@
         }
       });
     });
+    container.querySelectorAll('.btn-gen-plan').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.closest('.item').dataset.id;
+        const race = data.plans.find((p) => p.id === id);
+        if (race) generateTrainingPlan(race);
+      });
+    });
+    container.querySelectorAll('[data-check-idx]').forEach((chk) => {
+      chk.addEventListener('change', (e) => {
+        const id = e.target.closest('.item').dataset.id;
+        const idx = Number(e.target.dataset.checkIdx);
+        const plan = data.plans.find((p) => p.id === id);
+        if (plan && plan.checklist[idx]) {
+          plan.checklist[idx].checked = e.target.checked;
+          saveData();
+          const summary = e.target.closest('.checklist').querySelector('summary');
+          const checkedCount = plan.checklist.filter((c) => c.checked).length;
+          summary.textContent = `🎒 Checklist (${checkedCount}/${plan.checklist.length})`;
+        }
+      });
+    });
+    container.querySelectorAll('.btn-add-check').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const item = e.target.closest('.item');
+        const id = item.dataset.id;
+        const input = item.querySelector('.new-check-item');
+        const label = input.value.trim();
+        if (!label) return;
+        const plan = data.plans.find((p) => p.id === id);
+        if (plan) {
+          plan.checklist = plan.checklist || [];
+          plan.checklist.push({ label, checked: false });
+          saveData();
+          renderPlanning();
+        }
+      });
+    });
+  }
+
+  // Generates weekly training sessions (fractionné / sortie moyenne / sortie longue) leading up to a race.
+  function generateTrainingPlan(race) {
+    const weeksInput = prompt('Sur combien de semaines veux-tu générer le plan d\'entraînement ?', '8');
+    if (!weeksInput) return;
+    const weeks = Math.max(1, Math.min(20, parseInt(weeksInput, 10) || 0));
+    if (!weeks) {
+      alert('Nombre de semaines invalide.');
+      return;
+    }
+    const raceDate = new Date(race.date);
+    let created = 0;
+    for (let w = weeks; w >= 1; w--) {
+      const weekStart = new Date(raceDate);
+      weekStart.setDate(weekStart.getDate() - w * 7);
+      const isTaperWeek = w === 1;
+      const sessions = isTaperWeek
+        ? [{ offset: 2, name: 'Sortie allégée (semaine avant course)', km: 6 }]
+        : [
+            { offset: 1, name: 'Fractionné', km: 8 },
+            { offset: 3, name: 'Sortie moyenne', km: 12 },
+            { offset: 6, name: 'Sortie longue', km: 18 + Math.min(w, 6) },
+          ];
+      sessions.forEach((s) => {
+        const sessionDate = new Date(weekStart);
+        sessionDate.setDate(sessionDate.getDate() + s.offset);
+        sessionDate.setHours(9, 0, 0, 0);
+        if (sessionDate.getTime() <= Date.now() || sessionDate >= raceDate) return;
+        data.plans.push({
+          id: uid(),
+          name: `${s.name} (prépa ${race.name})`,
+          date: sessionDate.toISOString().slice(0, 16),
+          distanceKm: s.km,
+          deniveleM: null,
+          location: race.location || null,
+          isRace: false,
+          checklist: buildDefaultChecklist(false),
+          reminderHours: '24',
+          notes: `Séance de préparation pour ${race.name}`,
+          done: false,
+          reminded: false,
+        });
+        created++;
+      });
+    }
+    saveData();
+    renderPlanning();
+    renderResultForm();
+    alert(`${created} séances d'entraînement ajoutées au planning.`);
   }
 
   function prefillResultFromPlan(plan) {
@@ -322,23 +486,27 @@
       container.innerHTML = '<div class="empty">Aucun résultat enregistré pour le moment.</div>';
       return;
     }
-    container.innerHTML = items.map((r) => `
+    container.innerHTML = items.map((r) => {
+      const pace = formatPace(r.distanceKm, r.temps);
+      return `
       <div class="item" data-id="${r.id}">
         <div class="item-top">
           <div>
             <div class="item-title">${escapeHtml(r.name)}</div>
             <div class="item-meta">
-              ${formatDate(r.date)}${r.distanceKm ? ` · ${r.distanceKm} km` : ''}${r.deniveleM ? ` · D+ ${r.deniveleM} m` : ''}${r.temps ? ` · ${escapeHtml(r.temps)}` : ''}
+              ${formatDate(r.date)}${r.distanceKm ? ` · ${r.distanceKm} km` : ''}${r.deniveleM ? ` · D+ ${r.deniveleM} m` : ''}${r.temps ? ` · ${escapeHtml(r.temps)}` : ''}${pace ? ` · ${pace}` : ''}
               <span class="badge">${RESSENTI_LABELS[r.ressenti] || ''}</span>
             </div>
           </div>
           <div class="item-btns">
+            <button class="secondary small btn-share">📤</button>
             <button class="danger small btn-del">🗑</button>
           </div>
         </div>
         ${r.notes ? `<div class="item-notes">${escapeHtml(r.notes)}</div>` : ''}
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     container.querySelectorAll('.btn-del').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -351,6 +519,110 @@
         }
       });
     });
+    container.querySelectorAll('.btn-share').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.closest('.item').dataset.id;
+        const result = data.results.find((r) => r.id === id);
+        if (result) shareResult(result);
+      });
+    });
+  }
+
+  // ---------- Partage résultat ----------
+  function buildResultShareImage(result) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 800;
+    canvas.height = 450;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 22px system-ui, sans-serif';
+    ctx.fillText('🏔️ Suivi Trail', 32, 50);
+
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 34px system-ui, sans-serif';
+    wrapText(ctx, result.name, 32, 110, 736, 40);
+
+    ctx.font = '20px system-ui, sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(formatDate(result.date), 32, 155);
+
+    const pace = formatPace(result.distanceKm, result.temps);
+    const stats = [
+      result.distanceKm ? [`${result.distanceKm} km`, 'Distance'] : null,
+      result.deniveleM ? [`${Math.round(result.deniveleM)} m`, 'D+'] : null,
+      result.temps ? [result.temps, 'Temps'] : null,
+      pace ? [pace, 'Allure'] : null,
+    ].filter(Boolean);
+
+    const boxWidth = 736 / Math.max(stats.length, 1);
+    stats.forEach((s, i) => {
+      const x = 32 + i * boxWidth;
+      ctx.fillStyle = 'rgba(34,197,94,0.12)';
+      ctx.fillRect(x, 200, boxWidth - 12, 100);
+      ctx.fillStyle = '#22c55e';
+      ctx.font = 'bold 26px system-ui, sans-serif';
+      ctx.fillText(s[0], x + 12, 245);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.fillText(s[1], x + 12, 275);
+    });
+
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '22px system-ui, sans-serif';
+    ctx.fillText(RESSENTI_LABELS[result.ressenti] || '', 32, 350);
+
+    return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  }
+
+  function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+    const words = text.split(' ');
+    let line = '';
+    let curY = y;
+    words.forEach((word) => {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        ctx.fillText(line, x, curY);
+        line = word;
+        curY += lineHeight;
+      } else {
+        line = test;
+      }
+    });
+    if (line) ctx.fillText(line, x, curY);
+  }
+
+  async function shareResult(result) {
+    const blob = await buildResultShareImage(result);
+    const pace = formatPace(result.distanceKm, result.temps);
+    const text = `${result.name} — ${formatDate(result.date)}` +
+      (result.distanceKm ? ` · ${result.distanceKm} km` : '') +
+      (result.deniveleM ? ` · D+ ${result.deniveleM} m` : '') +
+      (result.temps ? ` · ${result.temps}` : '') +
+      (pace ? ` · ${pace}` : '');
+    const file = new File([blob], `${result.name.replace(/[^a-z0-9]+/gi, '-')}.png`, { type: 'image/png' });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: result.name, text });
+        return;
+      } catch (e) { /* user cancelled or share failed, fall through to download */ }
+    }
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: result.name, text });
+        return;
+      } catch (e) { /* user cancelled, fall through to download */ }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${result.name.replace(/[^a-z0-9]+/gi, '-')}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+    alert("Le partage direct n'est pas disponible : l'image récapitulative a été téléchargée à la place.");
   }
 
   // ---------- Stats ----------
