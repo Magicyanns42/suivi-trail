@@ -1,0 +1,374 @@
+(() => {
+  'use strict';
+
+  const STORAGE_KEY = 'suiviTrail.data.v1';
+  const REMINDER_CHECK_MS = 60 * 1000;
+
+  /** @type {{plans: Array<Object>, results: Array<Object>}} */
+  let data = loadData();
+
+  function loadData() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {
+      console.warn('Lecture données corrompue, réinitialisation.', e);
+    }
+    return { plans: [], results: [] };
+  }
+
+  function saveData() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  // ---------- Service worker registration ----------
+  let swRegistration = null;
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      swRegistration = reg;
+    }).catch((e) => console.warn('SW registration failed', e));
+  }
+
+  // ---------- Tabs ----------
+  const tabButtons = document.querySelectorAll('nav.tabs button');
+  tabButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      tabButtons.forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ---------- Notifications ----------
+  const notifBanner = document.getElementById('notif-banner');
+
+  function refreshNotifBanner() {
+    const supported = 'Notification' in window;
+    if (supported && Notification.permission === 'default') {
+      notifBanner.classList.add('show');
+    } else {
+      notifBanner.classList.remove('show');
+    }
+  }
+
+  async function requestNotifPermission() {
+    if (!('Notification' in window)) {
+      alert("Les notifications ne sont pas prises en charge par ce navigateur.");
+      return;
+    }
+    const perm = await Notification.requestPermission();
+    refreshNotifBanner();
+    if (perm === 'granted') {
+      showNotification('Rappels activés 🎉', { body: 'Tu recevras un rappel avant tes sorties planifiées.' });
+    }
+  }
+
+  function showNotification(title, options) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (swRegistration) {
+      swRegistration.showNotification(title, options);
+    } else {
+      new Notification(title, options);
+    }
+  }
+
+  document.getElementById('btn-enable-notif').addEventListener('click', requestNotifPermission);
+  document.getElementById('btn-enable-notif-2').addEventListener('click', requestNotifPermission);
+  document.getElementById('btn-test-notif').addEventListener('click', () => {
+    showNotification('Test de rappel 🏔️', { body: "Ceci est une notification de test.", icon: 'icons/icon.svg' });
+  });
+
+  refreshNotifBanner();
+
+  function checkReminders() {
+    const now = Date.now();
+    data.plans.forEach((p) => {
+      if (p.reminded || !p.reminderHours || p.done) return;
+      const eventTime = new Date(p.date).getTime();
+      const reminderTime = eventTime - Number(p.reminderHours) * 3600 * 1000;
+      if (now >= reminderTime && now < eventTime) {
+        showNotification(`Rappel : ${p.name}`, {
+          body: `Prévu le ${formatDateTime(p.date)}${p.distanceKm ? ` — ${p.distanceKm} km` : ''}`,
+          icon: 'icons/icon.svg',
+          tag: 'trail-reminder-' + p.id,
+        });
+        p.reminded = true;
+        saveData();
+      }
+    });
+  }
+  setInterval(checkReminders, REMINDER_CHECK_MS);
+  checkReminders();
+
+  // ---------- Helpers ----------
+  function formatDateTime(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+  function formatDate(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString('fr-FR', { dateStyle: 'medium' });
+  }
+  const RESSENTI_LABELS = { 5: '😄 Très bien', 4: '🙂 Bien', 3: '😐 Moyen', 2: '🙁 Difficile', 1: '🥵 Très difficile' };
+
+  function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  // ---------- Planning ----------
+  const formPlan = document.getElementById('form-plan');
+  formPlan.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const fd = new FormData(formPlan);
+    const plan = {
+      id: uid(),
+      name: fd.get('name').trim(),
+      date: fd.get('date'),
+      distanceKm: fd.get('distanceKm') ? Number(fd.get('distanceKm')) : null,
+      deniveleM: fd.get('deniveleM') ? Number(fd.get('deniveleM')) : null,
+      reminderHours: fd.get('reminderHours') || null,
+      notes: fd.get('notes').trim(),
+      done: false,
+      reminded: false,
+    };
+    data.plans.push(plan);
+    saveData();
+    formPlan.reset();
+    formPlan.querySelector('select[name="reminderHours"]').value = '24';
+    renderPlanning();
+    renderResultForm();
+  });
+
+  function renderPlanning() {
+    const now = Date.now();
+    const upcoming = data.plans.filter((p) => !p.done && new Date(p.date).getTime() >= now)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+    const past = data.plans.filter((p) => p.done || new Date(p.date).getTime() < now)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    renderPlanList('list-planning-upcoming', upcoming, true);
+    renderPlanList('list-planning-past', past, false);
+  }
+
+  function renderPlanList(containerId, items, isUpcoming) {
+    const container = document.getElementById(containerId);
+    if (items.length === 0) {
+      container.innerHTML = `<div class="empty">${isUpcoming ? 'Aucune sortie planifiée.' : 'Aucune sortie passée.'}</div>`;
+      return;
+    }
+    container.innerHTML = items.map((p) => `
+      <div class="item" data-id="${p.id}">
+        <div class="item-top">
+          <div>
+            <div class="item-title">${escapeHtml(p.name)} ${p.done ? '<span class="badge done">Réalisée</span>' : ''}</div>
+            <div class="item-meta">${formatDateTime(p.date)}${p.distanceKm ? ` · ${p.distanceKm} km` : ''}${p.deniveleM ? ` · D+ ${p.deniveleM} m` : ''}</div>
+          </div>
+          <div class="item-btns">
+            ${isUpcoming ? `<button class="secondary small btn-done">✓ Fait</button>` : ''}
+            <button class="danger small btn-del">🗑</button>
+          </div>
+        </div>
+        ${p.notes ? `<div class="item-notes">${escapeHtml(p.notes)}</div>` : ''}
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.btn-del').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.closest('.item').dataset.id;
+        if (confirm('Supprimer cette sortie planifiée ?')) {
+          data.plans = data.plans.filter((p) => p.id !== id);
+          saveData();
+          renderPlanning();
+          renderResultForm();
+        }
+      });
+    });
+    container.querySelectorAll('.btn-done')?.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.closest('.item').dataset.id;
+        const plan = data.plans.find((p) => p.id === id);
+        if (plan) {
+          plan.done = true;
+          saveData();
+          renderPlanning();
+          prefillResultFromPlan(plan);
+          tabButtons.forEach((b) => b.classList.remove('active'));
+          document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+          document.querySelector('[data-tab="tab-results"]').classList.add('active');
+          document.getElementById('tab-results').classList.add('active');
+        }
+      });
+    });
+  }
+
+  function prefillResultFromPlan(plan) {
+    const form = document.getElementById('form-result');
+    form.querySelector('[name="plannedId"]').value = plan.id;
+    form.querySelector('[name="name"]').value = plan.name;
+    form.querySelector('[name="date"]').value = plan.date.slice(0, 10);
+    if (plan.distanceKm) form.querySelector('[name="distanceKm"]').value = plan.distanceKm;
+    if (plan.deniveleM) form.querySelector('[name="deniveleM"]').value = plan.deniveleM;
+  }
+
+  // ---------- Résultats ----------
+  const formResult = document.getElementById('form-result');
+  const selectPlannedId = formResult.querySelector('[name="plannedId"]');
+
+  selectPlannedId.addEventListener('change', () => {
+    const plan = data.plans.find((p) => p.id === selectPlannedId.value);
+    if (plan) prefillResultFromPlan(plan);
+  });
+
+  formResult.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const fd = new FormData(formResult);
+    const result = {
+      id: uid(),
+      plannedId: fd.get('plannedId') || null,
+      name: fd.get('name').trim(),
+      date: fd.get('date'),
+      distanceKm: fd.get('distanceKm') ? Number(fd.get('distanceKm')) : null,
+      deniveleM: fd.get('deniveleM') ? Number(fd.get('deniveleM')) : null,
+      temps: fd.get('temps').trim() || null,
+      ressenti: Number(fd.get('ressenti')),
+      notes: fd.get('notes').trim(),
+    };
+    data.results.push(result);
+    if (result.plannedId) {
+      const plan = data.plans.find((p) => p.id === result.plannedId);
+      if (plan) plan.done = true;
+    }
+    saveData();
+    formResult.reset();
+    formResult.querySelector('[name="ressenti"]').value = '3';
+    renderResults();
+    renderPlanning();
+    renderResultForm();
+    renderStats();
+  });
+
+  function renderResultForm() {
+    const upcoming = [...data.plans].sort((a, b) => new Date(b.date) - new Date(a.date));
+    selectPlannedId.innerHTML = '<option value="">— Aucune (saisie libre) —</option>' +
+      upcoming.map((p) => `<option value="${p.id}">${escapeHtml(p.name)} — ${formatDate(p.date)}</option>`).join('');
+  }
+
+  function renderResults() {
+    const container = document.getElementById('list-results');
+    const items = [...data.results].sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (items.length === 0) {
+      container.innerHTML = '<div class="empty">Aucun résultat enregistré pour le moment.</div>';
+      return;
+    }
+    container.innerHTML = items.map((r) => `
+      <div class="item" data-id="${r.id}">
+        <div class="item-top">
+          <div>
+            <div class="item-title">${escapeHtml(r.name)}</div>
+            <div class="item-meta">
+              ${formatDate(r.date)}${r.distanceKm ? ` · ${r.distanceKm} km` : ''}${r.deniveleM ? ` · D+ ${r.deniveleM} m` : ''}${r.temps ? ` · ${escapeHtml(r.temps)}` : ''}
+              <span class="badge">${RESSENTI_LABELS[r.ressenti] || ''}</span>
+            </div>
+          </div>
+          <div class="item-btns">
+            <button class="danger small btn-del">🗑</button>
+          </div>
+        </div>
+        ${r.notes ? `<div class="item-notes">${escapeHtml(r.notes)}</div>` : ''}
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.btn-del').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.closest('.item').dataset.id;
+        if (confirm('Supprimer ce résultat ?')) {
+          data.results = data.results.filter((r) => r.id !== id);
+          saveData();
+          renderResults();
+          renderStats();
+        }
+      });
+    });
+  }
+
+  // ---------- Stats ----------
+  function renderStats() {
+    const container = document.getElementById('stats-grid');
+    const totalSorties = data.results.length;
+    const totalKm = data.results.reduce((s, r) => s + (r.distanceKm || 0), 0);
+    const totalDplus = data.results.reduce((s, r) => s + (r.deniveleM || 0), 0);
+    const upcoming = data.plans.filter((p) => !p.done && new Date(p.date).getTime() >= Date.now()).length;
+
+    const boxes = [
+      { val: totalSorties, lbl: 'Sorties réalisées' },
+      { val: totalKm.toFixed(1) + ' km', lbl: 'Distance cumulée' },
+      { val: Math.round(totalDplus) + ' m', lbl: 'D+ cumulé' },
+      { val: upcoming, lbl: 'Sorties à venir' },
+    ];
+    container.innerHTML = boxes.map((b) => `
+      <div class="stat-box"><div class="val">${b.val}</div><div class="lbl">${b.lbl}</div></div>
+    `).join('');
+  }
+
+  // ---------- Export / Import / Reset ----------
+  document.getElementById('btn-export').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const today = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `suivi-trail-${today}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById('input-import').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (!parsed || !Array.isArray(parsed.plans) || !Array.isArray(parsed.results)) {
+          throw new Error('Format invalide');
+        }
+        if (confirm('Importer ces données remplacera les données actuelles. Continuer ?')) {
+          data = parsed;
+          saveData();
+          renderAll();
+          alert('Import réussi.');
+        }
+      } catch (err) {
+        alert('Fichier invalide : ' + err.message);
+      }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  });
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    if (confirm('Cette action supprime définitivement toutes les données. Continuer ?')) {
+      data = { plans: [], results: [] };
+      saveData();
+      renderAll();
+    }
+  });
+
+  function renderAll() {
+    renderPlanning();
+    renderResultForm();
+    renderResults();
+    renderStats();
+  }
+
+  renderAll();
+})();

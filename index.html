@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Suivi Trail</title>
+<meta name="theme-color" content="#0f172a" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/icon.svg" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>🏔️ Suivi Trail</h1>
+  <p>Planning, résultats &amp; rappels — 100% local sur ton téléphone</p>
+</header>
+
+<div id="notif-banner">
+  <span>Active les notifications pour recevoir tes rappels de sortie.</span>
+  <button id="btn-enable-notif" class="secondary small">Activer</button>
+</div>
+
+<main>
+  <!-- PLANNING -->
+  <section id="tab-planning" class="tab-panel active">
+    <div class="card">
+      <h2>➕ Planifier une sortie</h2>
+      <form id="form-plan" class="form-grid">
+        <label class="full">Nom
+          <input type="text" name="name" placeholder="Ex: Trail des Crêtes" required />
+        </label>
+        <label>Date &amp; heure
+          <input type="datetime-local" name="date" required />
+        </label>
+        <label>Distance (km)
+          <input type="number" step="0.1" min="0" name="distanceKm" />
+        </label>
+        <label>D+ (m)
+          <input type="number" step="1" min="0" name="deniveleM" />
+        </label>
+        <label>Rappel avant
+          <select name="reminderHours">
+            <option value="">Aucun</option>
+            <option value="1">1 heure</option>
+            <option value="3">3 heures</option>
+            <option value="24" selected>1 jour</option>
+            <option value="48">2 jours</option>
+            <option value="168">1 semaine</option>
+          </select>
+        </label>
+        <label class="full">Notes
+          <textarea name="notes" placeholder="Objectif, matériel, parcours..."></textarea>
+        </label>
+        <div class="actions-row full">
+          <button type="submit" class="primary">Ajouter au planning</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>📅 Sorties à venir</h2>
+      <div id="list-planning-upcoming"></div>
+    </div>
+
+    <div class="card">
+      <h2>🗂️ Passées / réalisées</h2>
+      <div id="list-planning-past"></div>
+    </div>
+  </section>
+
+  <!-- RESULTATS -->
+  <section id="tab-results" class="tab-panel">
+    <div class="card">
+      <h2>➕ Ajouter un résultat</h2>
+      <form id="form-result" class="form-grid">
+        <label class="full">Lier à une sortie planifiée
+          <select name="plannedId">
+            <option value="">— Aucune (saisie libre) —</option>
+          </select>
+        </label>
+        <label class="full">Nom
+          <input type="text" name="name" placeholder="Ex: Trail des Crêtes" required />
+        </label>
+        <label>Date
+          <input type="date" name="date" required />
+        </label>
+        <label>Distance (km)
+          <input type="number" step="0.1" min="0" name="distanceKm" />
+        </label>
+        <label>D+ (m)
+          <input type="number" step="1" min="0" name="deniveleM" />
+        </label>
+        <label>Temps (hh:mm)
+          <input type="text" name="temps" placeholder="02:15" pattern="^\d{1,2}:\d{2}$" />
+        </label>
+        <label>Ressenti
+          <select name="ressenti">
+            <option value="5">😄 Très bien</option>
+            <option value="4">🙂 Bien</option>
+            <option value="3" selected>😐 Moyen</option>
+            <option value="2">🙁 Difficile</option>
+            <option value="1">🥵 Très difficile</option>
+          </select>
+        </label>
+        <label class="full">Notes
+          <textarea name="notes" placeholder="Sensations, météo, points à améliorer..."></textarea>
+        </label>
+        <div class="actions-row full">
+          <button type="submit" class="primary">Enregistrer le résultat</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>🏁 Historique des résultats</h2>
+      <div id="list-results"></div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section id="tab-stats" class="tab-panel">
+    <div class="card">
+      <h2>📊 Statistiques</h2>
+      <div class="stats-grid" id="stats-grid"></div>
+    </div>
+  </section>
+
+  <!-- PARAMETRES -->
+  <section id="tab-settings" class="tab-panel">
+    <div class="card">
+      <h2>🔔 Notifications</h2>
+      <p class="empty">
+        Les rappels se déclenchent quand l'appli est ouverte (ou en arrière-plan récent).
+        Pour ne rater aucun rappel, ouvre l'appli au moins une fois par jour.
+      </p>
+      <div class="actions-row">
+        <button id="btn-enable-notif-2" class="secondary">Activer les notifications</button>
+        <button id="btn-test-notif" class="secondary">Tester une notification</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>💾 Sauvegarde des données</h2>
+      <p class="empty">Toutes tes données restent uniquement sur cet appareil. Exporte régulièrement une sauvegarde.</p>
+      <div class="actions-row">
+        <button id="btn-export" class="secondary">Exporter (JSON)</button>
+        <label class="secondary" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:9px 14px;border-radius:8px;">
+          Importer
+          <input type="file" id="input-import" accept="application/json" style="display:none" />
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>⚠️ Zone danger</h2>
+      <div class="actions-row">
+        <button id="btn-reset" class="danger">Réinitialiser toutes les données</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav class="tabs">
+  <button data-tab="tab-planning" class="active"><span class="icon">📅</span>Planning</button>
+  <button data-tab="tab-results"><span class="icon">🏁</span>Résultats</button>
+  <button data-tab="tab-stats"><span class="icon">📊</span>Stats</button>
+  <button data-tab="tab-settings"><span class="icon">⚙️</span>Réglages</button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>
