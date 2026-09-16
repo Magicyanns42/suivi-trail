@@ -159,6 +159,11 @@ button.small { padding: 5px 9px; font-size: 0.78rem; }
 .stat-box .val { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
 .stat-box .lbl { font-size: 0.75rem; color: var(--muted); }
 
+.chart-block { margin-bottom: 18px; }
+.chart-block:last-child { margin-bottom: 0; }
+.chart-title { font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; }
+.chart-block canvas { width: 100%; height: auto; display: block; }
+
 .countdown-card {
   background: linear-gradient(135deg, rgba(34,197,94,0.15), rgba(250,204,21,0.1));
   border: 1px solid var(--accent);
@@ -185,6 +190,46 @@ button.small { padding: 5px 9px; font-size: 0.78rem; }
 .checklist-item input { width: auto; }
 .checklist-add { display: flex; gap: 6px; margin-top: 4px; }
 .checklist-add input { flex: 1; }
+
+.cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.cal-header span { font-weight: 600; text-transform: capitalize; }
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.cal-weekday {
+  text-align: center;
+  font-size: 0.68rem;
+  color: var(--muted);
+  padding: 2px 0 6px;
+}
+.cal-day {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  cursor: pointer;
+  min-width: 0;
+}
+.cal-day.empty { background: transparent; border: none; cursor: default; }
+.cal-day.today { border-color: var(--accent); border-width: 2px; }
+.cal-day.selected { background: rgba(34,197,94,0.22); border-color: var(--accent); }
+.cal-day .cal-dots { display: flex; gap: 2px; margin-top: 3px; }
+.cal-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.cal-dot.race { background: var(--accent-2); }
+.cal-dot.done { background: var(--muted); }
+.calendar-day-detail { margin-top: 10px; }
 
 nav.tabs {
   position: fixed;

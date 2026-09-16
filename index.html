@@ -68,7 +68,19 @@
     <div id="race-countdown"></div>
 
     <div class="card">
-      <h2>📅 Sorties à venir</h2>
+      <div class="actions-row" style="justify-content:space-between;align-items:center;margin-top:0;">
+        <h2 style="margin:0;">📅 Sorties à venir</h2>
+        <button type="button" id="btn-toggle-calendar" class="secondary small">🗓️ Vue calendrier</button>
+      </div>
+      <div id="calendar-view" style="display:none;">
+        <div class="cal-header">
+          <button type="button" id="cal-prev" class="secondary small">‹</button>
+          <span id="cal-month-label"></span>
+          <button type="button" id="cal-next" class="secondary small">›</button>
+        </div>
+        <div id="calendar-grid" class="calendar-grid"></div>
+        <div id="calendar-day-detail" class="calendar-day-detail"></div>
+      </div>
       <div id="list-planning-upcoming"></div>
     </div>
 
@@ -143,6 +155,25 @@
     <div class="card">
       <h2>📊 Statistiques</h2>
       <div class="stats-grid" id="stats-grid"></div>
+    </div>
+
+    <div class="card">
+      <h2>📈 Évolution hebdomadaire</h2>
+      <p class="empty" id="evolution-empty" style="display:none;">Ajoute au moins deux résultats pour voir ta progression.</p>
+      <div id="evolution-charts">
+        <div class="chart-block">
+          <div class="chart-title">Distance (km)</div>
+          <canvas id="chart-distance" width="600" height="140"></canvas>
+        </div>
+        <div class="chart-block">
+          <div class="chart-title">D+ (m)</div>
+          <canvas id="chart-denivele" width="600" height="140"></canvas>
+        </div>
+        <div class="chart-block">
+          <div class="chart-title">Allure moyenne (min/km)</div>
+          <canvas id="chart-allure" width="600" height="140"></canvas>
+        </div>
+      </div>
     </div>
   </section>
 

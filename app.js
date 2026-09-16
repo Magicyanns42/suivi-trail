@@ -88,6 +88,8 @@
       document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById(btn.dataset.tab).classList.add('active');
+      // Canvas charts need the tab visible (non-zero width) to size correctly.
+      if (btn.dataset.tab === 'tab-stats') renderEvolutionCharts();
     });
   });
 
@@ -298,24 +300,138 @@
     renderCountdown(upcoming);
     renderPlanList('list-planning-upcoming', upcoming, true);
     renderPlanList('list-planning-past', past, false);
+    if (calendarVisible) renderCalendar();
+  }
+
+  // ---------- Vue calendrier ----------
+  let calendarVisible = false;
+  let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  let selectedCalDate = null;
+  const WEEKDAYS_FR = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+  document.getElementById('btn-toggle-calendar').addEventListener('click', () => {
+    calendarVisible = !calendarVisible;
+    document.getElementById('calendar-view').style.display = calendarVisible ? '' : 'none';
+    document.getElementById('list-planning-upcoming').style.display = calendarVisible ? 'none' : '';
+    document.getElementById('btn-toggle-calendar').textContent = calendarVisible ? '📋 Vue liste' : '🗓️ Vue calendrier';
+    if (calendarVisible) renderCalendar();
+  });
+  document.getElementById('cal-prev').addEventListener('click', () => {
+    calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1);
+    renderCalendar();
+  });
+  document.getElementById('cal-next').addEventListener('click', () => {
+    calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1);
+    renderCalendar();
+  });
+
+  function toDateKey(dateStr) {
+    return dateStr.slice(0, 10);
+  }
+
+  function renderCalendar() {
+    document.getElementById('cal-month-label').textContent =
+      calendarMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const leadingBlanks = (firstDay.getDay() + 6) % 7; // Monday-first grid
+    const todayKey = toDateKey(new Date().toISOString());
+
+    const plansByDay = {};
+    data.plans.forEach((p) => {
+      const key = toDateKey(p.date);
+      (plansByDay[key] = plansByDay[key] || []).push(p);
+    });
+
+    let html = WEEKDAYS_FR.map((w) => `<div class="cal-weekday">${w}</div>`).join('');
+    for (let i = 0; i < leadingBlanks; i++) html += '<div class="cal-day empty"></div>';
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const plansToday = plansByDay[dateKey] || [];
+      const dots = plansToday.slice(0, 4).map((p) =>
+        `<span class="cal-dot${p.isRace ? ' race' : ''}${p.done ? ' done' : ''}"></span>`).join('');
+      const classes = ['cal-day'];
+      if (dateKey === todayKey) classes.push('today');
+      if (dateKey === selectedCalDate) classes.push('selected');
+      html += `<div class="${classes.join(' ')}" data-date="${dateKey}">${d}<div class="cal-dots">${dots}</div></div>`;
+    }
+    document.getElementById('calendar-grid').innerHTML = html;
+
+    document.querySelectorAll('.cal-day[data-date]').forEach((cell) => {
+      cell.addEventListener('click', () => {
+        selectedCalDate = cell.dataset.date;
+        renderCalendar();
+        renderCalendarDayDetail(selectedCalDate);
+      });
+    });
+
+    if (selectedCalDate) renderCalendarDayDetail(selectedCalDate);
+  }
+
+  function renderCalendarDayDetail(dateKey) {
+    const container = document.getElementById('calendar-day-detail');
+    const plans = data.plans.filter((p) => toDateKey(p.date) === dateKey)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+    if (plans.length === 0) {
+      container.innerHTML = `<div class="empty">Aucune sortie le ${formatDate(dateKey)}.</div>`;
+      return;
+    }
+    container.innerHTML = plans.map((p) => `
+      <div class="item" data-id="${p.id}">
+        <div class="item-top">
+          <div>
+            <div class="item-title">${p.isRace ? '🏆 ' : ''}${escapeHtml(p.name)} ${p.done ? '<span class="badge done">Réalisée</span>' : ''}</div>
+            <div class="item-meta">${formatDateTime(p.date)}${p.distanceKm ? ` · ${p.distanceKm} km` : ''}</div>
+          </div>
+          <div class="item-btns">
+            <button class="secondary small btn-cal-edit">✏️</button>
+            <button class="danger small btn-cal-del">🗑</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.btn-cal-edit').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.closest('.item').dataset.id;
+        const plan = data.plans.find((p) => p.id === id);
+        if (plan) startEditPlan(plan);
+      });
+    });
+    container.querySelectorAll('.btn-cal-del').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.closest('.item').dataset.id;
+        if (confirm('Supprimer cette sortie planifiée ?')) {
+          data.plans = data.plans.filter((p) => p.id !== id);
+          saveData();
+          renderPlanning();
+          renderResultForm();
+          renderCalendarDayDetail(dateKey);
+        }
+      });
+    });
   }
 
   function renderCountdown(upcoming) {
     const container = document.getElementById('race-countdown');
-    const nextRace = upcoming.find((p) => p.isRace);
-    if (!nextRace) {
+    if (upcoming.length === 0) {
       container.innerHTML = '';
       return;
     }
+    // Prefer the next race if there is one, otherwise the next planned outing.
+    const next = upcoming.find((p) => p.isRace) || upcoming[0];
     const now = Date.now();
-    const raceTime = new Date(nextRace.date).getTime();
-    const days = Math.ceil((raceTime - now) / (24 * 3600 * 1000));
+    const eventTime = new Date(next.date).getTime();
+    const days = Math.ceil((eventTime - now) / (24 * 3600 * 1000));
     container.innerHTML = `
       <div class="countdown-card">
-        <div class="cd-label">Prochaine course</div>
-        <div class="cd-name">🏆 ${escapeHtml(nextRace.name)}</div>
+        <div class="cd-label">${next.isRace ? 'Prochaine course' : 'Prochaine sortie'}</div>
+        <div class="cd-name">${next.isRace ? '🏆 ' : '🏃 '}${escapeHtml(next.name)}</div>
         <div class="cd-days">${days <= 0 ? "C'est aujourd'hui !" : `J-${days}`}</div>
-        <div class="cd-sub">${formatDateTime(nextRace.date)}${nextRace.location ? ` · ${escapeHtml(nextRace.location)}` : ''}</div>
+        <div class="cd-sub">${formatDateTime(next.date)}${next.location ? ` · ${escapeHtml(next.location)}` : ''}</div>
       </div>
     `;
   }
@@ -849,6 +965,144 @@
     container.innerHTML = boxes.map((b) => `
       <div class="stat-box"><div class="val">${b.val}</div><div class="lbl">${b.lbl}</div></div>
     `).join('');
+
+    renderEvolutionCharts();
+  }
+
+  // ---------- Graphiques d'évolution hebdomadaire ----------
+  function getWeekStart(dateStr) {
+    const d = new Date(dateStr);
+    const day = (d.getDay() + 6) % 7; // Monday = 0
+    d.setDate(d.getDate() - day);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function buildWeeklyStats() {
+    const weeks = new Map();
+    data.results.forEach((r) => {
+      const weekStart = getWeekStart(r.date);
+      const key = weekStart.getTime();
+      if (!weeks.has(key)) weeks.set(key, { weekStart, km: 0, denivele: 0, paceSum: 0, paceCount: 0 });
+      const w = weeks.get(key);
+      w.km += r.distanceKm || 0;
+      w.denivele += r.deniveleM || 0;
+      const minutes = parseTempsToMinutes(r.temps);
+      if (minutes && r.distanceKm) {
+        w.paceSum += minutes / r.distanceKm;
+        w.paceCount++;
+      }
+    });
+    return Array.from(weeks.values())
+      .sort((a, b) => a.weekStart - b.weekStart)
+      .slice(-10)
+      .map((w) => ({
+        label: w.weekStart.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+        km: Math.round(w.km * 10) / 10,
+        denivele: Math.round(w.denivele),
+        pace: w.paceCount ? w.paceSum / w.paceCount : null,
+      }));
+  }
+
+  function renderEvolutionCharts() {
+    const weekly = buildWeeklyStats();
+    const emptyMsg = document.getElementById('evolution-empty');
+    const chartsDiv = document.getElementById('evolution-charts');
+    if (weekly.length < 2) {
+      emptyMsg.style.display = '';
+      chartsDiv.style.display = 'none';
+      return;
+    }
+    emptyMsg.style.display = 'none';
+    chartsDiv.style.display = '';
+
+    drawBarChart('chart-distance', weekly.map((w) => w.label), weekly.map((w) => w.km), '#22c55e', 'km');
+    drawBarChart('chart-denivele', weekly.map((w) => w.label), weekly.map((w) => w.denivele), '#facc15', 'm');
+    drawLineChart('chart-allure', weekly.map((w) => w.label), weekly.map((w) => w.pace));
+  }
+
+  function setupCanvas(canvas) {
+    const ctx = canvas.getContext('2d');
+    const cssWidth = canvas.clientWidth || 600;
+    const cssHeight = 140;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = cssWidth * ratio;
+    canvas.height = cssHeight * ratio;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+    return { ctx, width: cssWidth, height: cssHeight };
+  }
+
+  function drawBarChart(canvasId, labels, values, color, unit) {
+    const canvas = document.getElementById(canvasId);
+    const { ctx, width, height } = setupCanvas(canvas);
+    const padTop = 16;
+    const padBottom = 20;
+    const max = Math.max(...values, 1);
+    const barAreaHeight = height - padTop - padBottom;
+    const barWidth = width / values.length;
+
+    values.forEach((v, i) => {
+      const barHeight = (v / max) * barAreaHeight;
+      const x = i * barWidth + barWidth * 0.2;
+      const y = padTop + (barAreaHeight - barHeight);
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, barWidth * 0.6, barHeight);
+
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      if (v > 0) ctx.fillText(`${v}${unit}`, x + barWidth * 0.3, y - 4 < padTop ? padTop + 10 : y - 4);
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(labels[i], x + barWidth * 0.3, height - 4);
+    });
+  }
+
+  function drawLineChart(canvasId, labels, values) {
+    const canvas = document.getElementById(canvasId);
+    const { ctx, width, height } = setupCanvas(canvas);
+    const padTop = 16;
+    const padBottom = 20;
+    const valid = values.filter((v) => v !== null && v !== undefined);
+    if (valid.length === 0) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Pas encore de temps enregistrés', width / 2, height / 2);
+      return;
+    }
+    const max = Math.max(...valid);
+    const min = Math.min(...valid);
+    const range = max - min || 1;
+    const plotHeight = height - padTop - padBottom;
+    const stepX = width / Math.max(values.length - 1, 1);
+
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let started = false;
+    values.forEach((v, i) => {
+      if (v === null || v === undefined) return;
+      const x = i * stepX;
+      const y = padTop + (1 - (v - min) / range) * plotHeight;
+      if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+    });
+    ctx.stroke();
+
+    values.forEach((v, i) => {
+      if (v === null || v === undefined) return;
+      const x = i * stepX;
+      const y = padTop + (1 - (v - min) / range) * plotHeight;
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(labels[i], x, height - 4);
+    });
   }
 
   // ---------- Export / Import / Reset ----------
