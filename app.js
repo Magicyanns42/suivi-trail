@@ -646,8 +646,11 @@
 
   // ---------- Export / Import / Reset ----------
   document.getElementById('btn-export').addEventListener('click', () => {
-    const today = new Date().toISOString().slice(0, 10);
-    downloadBackup(`suivi-trail-${today}.json`);
+    downloadBackup('suivi-trail-backup.json');
+    const settings = getAutoBackupSettings();
+    settings.lastDate = new Date().toISOString().slice(0, 10);
+    setAutoBackupSettings(settings);
+    updateAutoBackupStatus();
   });
 
   const chkAutoBackup = document.getElementById('chk-auto-backup');
