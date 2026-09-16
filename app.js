@@ -544,6 +544,7 @@
           renderPlanning();
           prefillResultFromPlan(plan);
           activateTab('tab-results');
+          openResultModal();
         }
       });
     });
@@ -691,6 +692,21 @@
   // ---------- Résultats ----------
   const formResult = document.getElementById('form-result');
   const selectPlannedId = formResult.querySelector('[name="plannedId"]');
+  const resultModalOverlay = document.getElementById('result-modal-overlay');
+  const importModalOverlay = document.getElementById('import-modal-overlay');
+
+  function openResultModal() { resultModalOverlay.classList.add('open'); }
+  function closeResultModal() { resultModalOverlay.classList.remove('open'); }
+  function openImportModal() { importModalOverlay.classList.add('open'); }
+  function closeImportModal() { importModalOverlay.classList.remove('open'); }
+
+  document.getElementById('btn-open-result-modal').addEventListener('click', openResultModal);
+  document.getElementById('btn-close-result-modal').addEventListener('click', closeResultModal);
+  resultModalOverlay.addEventListener('click', (e) => { if (e.target === resultModalOverlay) closeResultModal(); });
+
+  document.getElementById('btn-open-import-modal').addEventListener('click', openImportModal);
+  document.getElementById('btn-close-import-modal').addEventListener('click', closeImportModal);
+  importModalOverlay.addEventListener('click', (e) => { if (e.target === importModalOverlay) closeImportModal(); });
 
   selectPlannedId.addEventListener('change', () => {
     const plan = data.plans.find((p) => p.id === selectPlannedId.value);
@@ -805,8 +821,8 @@
         if (parsed.deniveleM) formResult.querySelector('[name="deniveleM"]').value = parsed.deniveleM;
         if (parsed.temps) formResult.querySelector('[name="temps"]').value = parsed.temps;
         pendingGpxTrack = { track: parsed.track, elevations: parsed.elevations };
-        formResult.scrollIntoView({ behavior: 'smooth' });
-        alert('Données importées : vérifie les champs puis complète le ressenti avant d\'enregistrer.');
+        closeImportModal();
+        openResultModal();
       } catch (err) {
         alert('Import impossible : ' + err.message);
       }
@@ -840,6 +856,7 @@
     saveData();
     formResult.reset();
     formResult.querySelector('[name="ressenti"]').value = '3';
+    closeResultModal();
     renderResults();
     renderPlanning();
     renderResultForm();

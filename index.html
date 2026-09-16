@@ -100,8 +100,24 @@
   <!-- RESULTATS -->
   <section id="tab-results" class="tab-panel">
     <div class="card">
-      <h2>📥 Importer depuis Suunto / Garmin / autre montre</h2>
-      <p class="empty">Exporte ta sortie au format <strong>GPX "Entraînement"</strong> depuis l'appli Suunto puis importe le fichier ici (même si Suunto le nomme en ".txt", le contenu est reconnu automatiquement). Les champs ci-dessous seront pré-remplis.</p>
+      <div class="actions-row" style="justify-content:space-between;align-items:center;margin-top:0;">
+        <h2 style="margin:0;">🏁 Historique des résultats</h2>
+      </div>
+      <div class="actions-row">
+        <button type="button" id="btn-open-import-modal" class="secondary">📥 Importer GPX</button>
+        <button type="button" id="btn-open-result-modal" class="primary">➕ Ajouter un résultat</button>
+      </div>
+      <div id="list-results"></div>
+    </div>
+  </section>
+
+  <div id="import-modal-overlay" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 style="margin:0;">📥 Importer depuis Suunto / Garmin / autre montre</h2>
+        <button type="button" id="btn-close-import-modal" class="modal-close" aria-label="Fermer">✕</button>
+      </div>
+      <p class="empty">Exporte ta sortie au format <strong>GPX "Entraînement"</strong> depuis l'appli Suunto puis importe le fichier ici (même si Suunto le nomme en ".txt", le contenu est reconnu automatiquement). Les champs du formulaire "Ajouter un résultat" seront pré-remplis.</p>
       <div class="actions-row">
         <label class="secondary" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:9px 14px;border-radius:8px;">
           Choisir un fichier GPX
@@ -109,9 +125,14 @@
         </label>
       </div>
     </div>
+  </div>
 
-    <div class="card">
-      <h2>➕ Ajouter un résultat</h2>
+  <div id="result-modal-overlay" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 style="margin:0;">➕ Ajouter un résultat</h2>
+        <button type="button" id="btn-close-result-modal" class="modal-close" aria-label="Fermer">✕</button>
+      </div>
       <form id="form-result" class="form-grid">
         <label class="full">Lier à une sortie planifiée
           <select name="plannedId">
@@ -150,12 +171,7 @@
         </div>
       </form>
     </div>
-
-    <div class="card">
-      <h2>🏁 Historique des résultats</h2>
-      <div id="list-results"></div>
-    </div>
-  </section>
+  </div>
 
   <!-- STATS -->
   <section id="tab-stats" class="tab-panel">
