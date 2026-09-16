@@ -734,6 +734,15 @@
     return Math.round(gain);
   }
 
+  // Picks evenly-spaced samples to keep stored track/elevation data small in localStorage.
+  function downsample(arr, maxPoints) {
+    if (arr.length <= maxPoints) return arr;
+    const step = arr.length / maxPoints;
+    const out = [];
+    for (let i = 0; i < maxPoints; i++) out.push(arr[Math.floor(i * step)]);
+    return out;
+  }
+
   function parseGpx(xmlText) {
     const xml = new DOMParser().parseFromString(xmlText, 'application/xml');
     if (xml.querySelector('parsererror')) throw new Error('Fichier GPX invalide ou corrompu.');
@@ -775,8 +784,12 @@
       distanceKm: Math.round(distanceKm * 100) / 100,
       deniveleM,
       temps,
+      track: downsample(trkpts.map((p) => [p.lat, p.lon]), 150),
+      elevations: downsample(elevations, 80),
     };
   }
+
+  let pendingGpxTrack = null;
 
   document.getElementById('input-gpx').addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -791,6 +804,7 @@
         if (parsed.distanceKm) formResult.querySelector('[name="distanceKm"]').value = parsed.distanceKm;
         if (parsed.deniveleM) formResult.querySelector('[name="deniveleM"]').value = parsed.deniveleM;
         if (parsed.temps) formResult.querySelector('[name="temps"]').value = parsed.temps;
+        pendingGpxTrack = { track: parsed.track, elevations: parsed.elevations };
         formResult.scrollIntoView({ behavior: 'smooth' });
         alert('Données importées : vérifie les champs puis complète le ressenti avant d\'enregistrer.');
       } catch (err) {
@@ -814,7 +828,10 @@
       temps: fd.get('temps').trim() || null,
       ressenti: Number(fd.get('ressenti')),
       notes: fd.get('notes').trim(),
+      track: pendingGpxTrack ? pendingGpxTrack.track : null,
+      elevations: pendingGpxTrack ? pendingGpxTrack.elevations : null,
     };
+    pendingGpxTrack = null;
     data.results.push(result);
     if (result.plannedId) {
       const plan = data.plans.find((p) => p.id === result.plannedId);
@@ -844,6 +861,8 @@
     }
     container.innerHTML = items.map((r) => {
       const pace = formatPace(r.distanceKm, r.temps);
+      const hasTrack = r.track && r.track.length > 1;
+      const hasElevations = r.elevations && r.elevations.length > 1;
       return `
       <div class="item" data-id="${r.id}">
         <div class="item-top">
@@ -860,6 +879,11 @@
           </div>
         </div>
         ${r.notes ? `<div class="item-notes">${escapeHtml(r.notes)}</div>` : ''}
+        ${(hasTrack || hasElevations) ? `
+        <div class="result-charts">
+          ${hasTrack ? `<div class="chart-block"><div class="chart-title">Tracé</div><canvas id="track-${r.id}" width="300" height="120"></canvas></div>` : ''}
+          ${hasElevations ? `<div class="chart-block"><div class="chart-title">Profil altimétrique</div><canvas id="elev-${r.id}" width="300" height="90"></canvas></div>` : ''}
+        </div>` : ''}
       </div>
     `;
     }).join('');
@@ -882,6 +906,81 @@
         if (result) shareResult(result);
       });
     });
+
+    items.forEach((r) => {
+      if (r.track && r.track.length > 1) drawRouteShape(`track-${r.id}`, r.track);
+      if (r.elevations && r.elevations.length > 1) drawElevationProfile(`elev-${r.id}`, r.elevations);
+    });
+  }
+
+  function drawRouteShape(canvasId, track) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const { ctx, width, height } = setupCanvas(canvas, 120);
+    const pad = 10;
+    const avgLat = track.reduce((s, p) => s + p[0], 0) / track.length;
+    const latRad = avgLat * Math.PI / 180;
+    const points = track.map(([lat, lon]) => ({ x: lon * Math.cos(latRad), y: -lat }));
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const rangeX = maxX - minX || 1;
+    const rangeY = maxY - minY || 1;
+    const scale = Math.min((width - pad * 2) / rangeX, (height - pad * 2) / rangeY);
+    const offsetX = pad + ((width - pad * 2) - rangeX * scale) / 2;
+    const offsetY = pad + ((height - pad * 2) - rangeY * scale) / 2;
+
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      const x = offsetX + (p.x - minX) * scale;
+      const y = offsetY + (p.y - minY) * scale;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    ctx.fillStyle = '#facc15';
+    const start = points[0];
+    ctx.beginPath();
+    ctx.arc(offsetX + (start.x - minX) * scale, offsetY + (start.y - minY) * scale, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawElevationProfile(canvasId, elevations) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const { ctx, width, height } = setupCanvas(canvas, 90);
+    const padTop = 8;
+    const padBottom = 4;
+    const min = Math.min(...elevations);
+    const max = Math.max(...elevations);
+    const range = max - min || 1;
+    const plotHeight = height - padTop - padBottom;
+    const stepX = width / (elevations.length - 1);
+
+    ctx.fillStyle = 'rgba(250,204,21,0.2)';
+    ctx.beginPath();
+    ctx.moveTo(0, height - padBottom);
+    elevations.forEach((e, i) => {
+      const x = i * stepX;
+      const y = padTop + (1 - (e - min) / range) * plotHeight;
+      ctx.lineTo(x, y);
+    });
+    ctx.lineTo(width, height - padBottom);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    elevations.forEach((e, i) => {
+      const x = i * stepX;
+      const y = padTop + (1 - (e - min) / range) * plotHeight;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
   }
 
   // ---------- Partage résultat ----------
@@ -1054,10 +1153,10 @@
     drawLineChart('chart-allure', weekly.map((w) => w.label), weekly.map((w) => w.pace));
   }
 
-  function setupCanvas(canvas) {
+  function setupCanvas(canvas, height = 140) {
     const ctx = canvas.getContext('2d');
     const cssWidth = canvas.clientWidth || 600;
-    const cssHeight = 140;
+    const cssHeight = height;
     const ratio = window.devicePixelRatio || 1;
     canvas.width = cssWidth * ratio;
     canvas.height = cssHeight * ratio;

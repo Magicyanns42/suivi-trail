@@ -164,6 +164,22 @@ button.small { padding: 5px 9px; font-size: 0.78rem; }
 .chart-title { font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; }
 .chart-block canvas { width: 100%; height: auto; display: block; }
 
+.result-charts {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.result-charts .chart-block { margin-bottom: 0; }
+.result-charts canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
 .countdown-card {
   background: linear-gradient(135deg, rgba(34,197,94,0.15), rgba(250,204,21,0.1));
   border: 1px solid var(--accent);
