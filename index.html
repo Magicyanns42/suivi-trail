@@ -24,7 +24,7 @@
   <!-- PLANNING -->
   <section id="tab-planning" class="tab-panel active">
     <div class="card">
-      <h2>➕ Planifier une sortie</h2>
+      <h2 id="form-plan-title">➕ Planifier une sortie</h2>
       <form id="form-plan" class="form-grid">
         <label class="full">Nom
           <input type="text" name="name" placeholder="Ex: Trail des Crêtes" required />
@@ -59,7 +59,8 @@
           <textarea name="notes" placeholder="Objectif, matériel, parcours..."></textarea>
         </label>
         <div class="actions-row full">
-          <button type="submit" class="primary">Ajouter au planning</button>
+          <button type="submit" id="btn-submit-plan" class="primary">Ajouter au planning</button>
+          <button type="button" id="btn-cancel-edit-plan" class="secondary" style="display:none;">Annuler la modification</button>
         </div>
       </form>
     </div>

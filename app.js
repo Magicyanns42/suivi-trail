@@ -209,10 +209,63 @@
 
   // ---------- Planning ----------
   const formPlan = document.getElementById('form-plan');
+  const btnSubmitPlan = document.getElementById('btn-submit-plan');
+  const btnCancelEditPlan = document.getElementById('btn-cancel-edit-plan');
+  const formPlanTitle = document.getElementById('form-plan-title');
+  let editingPlanId = null;
+
+  function startEditPlan(plan) {
+    editingPlanId = plan.id;
+    formPlan.querySelector('[name="name"]').value = plan.name;
+    formPlan.querySelector('[name="date"]').value = plan.date.slice(0, 16);
+    formPlan.querySelector('[name="distanceKm"]').value = plan.distanceKm ?? '';
+    formPlan.querySelector('[name="deniveleM"]').value = plan.deniveleM ?? '';
+    formPlan.querySelector('[name="location"]').value = plan.location ?? '';
+    formPlan.querySelector('[name="isRace"]').checked = !!plan.isRace;
+    formPlan.querySelector('[name="reminderHours"]').value = plan.reminderHours ?? '';
+    formPlan.querySelector('[name="notes"]').value = plan.notes ?? '';
+    formPlanTitle.textContent = '✏️ Modifier la sortie';
+    btnSubmitPlan.textContent = 'Enregistrer les modifications';
+    btnCancelEditPlan.style.display = '';
+    formPlan.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function cancelEditPlan() {
+    editingPlanId = null;
+    formPlan.reset();
+    formPlan.querySelector('select[name="reminderHours"]').value = '24';
+    formPlanTitle.textContent = '➕ Planifier une sortie';
+    btnSubmitPlan.textContent = 'Ajouter au planning';
+    btnCancelEditPlan.style.display = 'none';
+  }
+
+  btnCancelEditPlan.addEventListener('click', cancelEditPlan);
+
   formPlan.addEventListener('submit', (e) => {
     e.preventDefault();
     const fd = new FormData(formPlan);
     const isRace = fd.get('isRace') === 'on';
+
+    if (editingPlanId) {
+      const plan = data.plans.find((p) => p.id === editingPlanId);
+      if (plan) {
+        plan.name = fd.get('name').trim();
+        plan.date = fd.get('date');
+        plan.distanceKm = fd.get('distanceKm') ? Number(fd.get('distanceKm')) : null;
+        plan.deniveleM = fd.get('deniveleM') ? Number(fd.get('deniveleM')) : null;
+        plan.location = fd.get('location').trim() || null;
+        plan.isRace = isRace;
+        plan.reminderHours = fd.get('reminderHours') || null;
+        plan.notes = fd.get('notes').trim();
+        plan.reminded = false;
+        saveData();
+      }
+      cancelEditPlan();
+      renderPlanning();
+      renderResultForm();
+      return;
+    }
+
     const plan = {
       id: uid(),
       name: fd.get('name').trim(),
@@ -287,6 +340,8 @@
           <div class="item-btns">
             ${isUpcoming && p.isRace ? `<button class="secondary small btn-gen-plan">📋 Plan</button>` : ''}
             ${isUpcoming ? `<button class="secondary small btn-done">✓ Fait</button>` : ''}
+            ${!isUpcoming && p.done ? `<button class="secondary small btn-undone">↩️ Annuler</button>` : ''}
+            <button class="secondary small btn-edit">✏️</button>
             <button class="danger small btn-del">🗑</button>
           </div>
         </div>
@@ -343,6 +398,31 @@
         const id = e.target.closest('.item').dataset.id;
         const race = data.plans.find((p) => p.id === id);
         if (race) generateTrainingPlan(race);
+      });
+    });
+    container.querySelectorAll('.btn-edit').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.closest('.item').dataset.id;
+        const plan = data.plans.find((p) => p.id === id);
+        if (plan) {
+          startEditPlan(plan);
+          tabButtons.forEach((b) => b.classList.remove('active'));
+          document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+          document.querySelector('[data-tab="tab-planning"]').classList.add('active');
+          document.getElementById('tab-planning').classList.add('active');
+        }
+      });
+    });
+    container.querySelectorAll('.btn-undone').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.closest('.item').dataset.id;
+        const plan = data.plans.find((p) => p.id === id);
+        if (plan) {
+          plan.done = false;
+          saveData();
+          renderPlanning();
+          renderResultForm();
+        }
       });
     });
     container.querySelectorAll('[data-check-idx]').forEach((chk) => {
