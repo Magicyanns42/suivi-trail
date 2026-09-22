@@ -72,6 +72,35 @@
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
+  const APPEARANCE_KEY = 'suiviTrail.appearance.v1';
+  function getAppearance() {
+    try {
+      return { theme: 'dark', accent: '#22c55e', ...JSON.parse(localStorage.getItem(APPEARANCE_KEY) || '{}') };
+    } catch (e) {
+      return { theme: 'dark', accent: '#22c55e' };
+    }
+  }
+
+  function applyAppearance(appearance) {
+    document.documentElement.dataset.theme = appearance.theme;
+    document.documentElement.style.setProperty('--accent', appearance.accent);
+    document.getElementById('theme-select').value = appearance.theme;
+    document.getElementById('accent-color').value = appearance.accent;
+  }
+
+  const appearance = getAppearance();
+  applyAppearance(appearance);
+  document.getElementById('theme-select').addEventListener('change', (e) => {
+    appearance.theme = e.target.value;
+    localStorage.setItem(APPEARANCE_KEY, JSON.stringify(appearance));
+    applyAppearance(appearance);
+  });
+  document.getElementById('accent-color').addEventListener('input', (e) => {
+    appearance.accent = e.target.value;
+    localStorage.setItem(APPEARANCE_KEY, JSON.stringify(appearance));
+    applyAppearance(appearance);
+  });
+
   // ---------- Service worker registration ----------
   let swRegistration = null;
   if ('serviceWorker' in navigator) {
@@ -859,10 +888,12 @@
     const trkpts = Array.from(xml.getElementsByTagName('trkpt')).map((pt) => {
       const timeEl = pt.getElementsByTagName('time')[0];
       const eleEl = pt.getElementsByTagName('ele')[0];
+      const hrEl = pt.getElementsByTagNameNS('*', 'hr')[0];
       return {
         lat: parseFloat(pt.getAttribute('lat')),
         lon: parseFloat(pt.getAttribute('lon')),
         ele: eleEl ? parseFloat(eleEl.textContent) : null,
+        hr: hrEl ? parseFloat(hrEl.textContent) : null,
         time: timeEl ? new Date(timeEl.textContent) : null,
       };
     });
@@ -876,6 +907,7 @@
     }
     const elevations = trkpts.map((p) => p.ele).filter((e) => e !== null);
     const deniveleM = computeElevationGain(elevations);
+    const heartRates = trkpts.map((p) => p.hr).filter((hr) => Number.isFinite(hr));
 
     const times = trkpts.map((p) => p.time).filter(Boolean);
     const nameEl = xml.querySelector('trk > name');
@@ -893,6 +925,8 @@
       distanceKm: Math.round(distanceKm * 100) / 100,
       deniveleM,
       temps,
+      heartRateAvg: heartRates.length ? Math.round(heartRates.reduce((sum, hr) => sum + hr, 0) / heartRates.length) : null,
+      heartRateMax: heartRates.length ? Math.max(...heartRates) : null,
       track: downsample(trkpts.map((p) => [p.lat, p.lon]), 150),
       elevations: downsample(elevations, 80),
     };
@@ -957,7 +991,12 @@
         if (parsed.distanceKm) formResult.querySelector('[name="distanceKm"]').value = parsed.distanceKm;
         if (parsed.deniveleM) formResult.querySelector('[name="deniveleM"]').value = parsed.deniveleM;
         if (parsed.temps) formResult.querySelector('[name="temps"]').value = parsed.temps;
-        pendingGpxTrack = { track: parsed.track, elevations: parsed.elevations };
+        pendingGpxTrack = {
+          track: parsed.track,
+          elevations: parsed.elevations,
+          heartRateAvg: parsed.heartRateAvg,
+          heartRateMax: parsed.heartRateMax,
+        };
         closeImportModal();
         openResultModal();
       } catch (err) {
@@ -978,6 +1017,8 @@
       distanceKm: fd.get('distanceKm') ? Number(fd.get('distanceKm')) : null,
       deniveleM: fd.get('deniveleM') ? Number(fd.get('deniveleM')) : null,
       temps: fd.get('temps').trim() || null,
+      heartRateAvg: pendingGpxTrack ? pendingGpxTrack.heartRateAvg : null,
+      heartRateMax: pendingGpxTrack ? pendingGpxTrack.heartRateMax : null,
       ressenti: Number(fd.get('ressenti')),
       notes: fd.get('notes').trim(),
     };
@@ -989,6 +1030,8 @@
         if (pendingGpxTrack) {
           result.track = pendingGpxTrack.track;
           result.elevations = pendingGpxTrack.elevations;
+          result.heartRateAvg = pendingGpxTrack.heartRateAvg;
+          result.heartRateMax = pendingGpxTrack.heartRateMax;
         }
         if (pendingPhotoDataUrl) result.photo = pendingPhotoDataUrl;
         else if (photoRemoved) result.photo = null;
@@ -1063,12 +1106,14 @@
           </div>
         </div>
         ${r.notes ? `<div class="item-notes">${escapeHtml(r.notes)}</div>` : ''}
+        ${(r.heartRateAvg || r.heartRateMax) ? `<div class="item-meta">❤️ FC moyenne ${r.heartRateAvg ? `${r.heartRateAvg} bpm` : 'n/a'}${r.heartRateMax ? ` · max ${r.heartRateMax} bpm` : ''}</div>` : ''}
         ${r.photo ? `<img class="result-photo" src="${r.photo}" alt="Photo de ${escapeHtml(r.name)}" />` : ''}
         ${(hasTrack || hasElevations) ? `
         <div class="result-charts">
           ${hasTrack ? `<div class="chart-block"><div class="chart-title">Tracé</div><canvas id="track-${r.id}" width="300" height="120"></canvas></div>` : ''}
           ${hasElevations ? `<div class="chart-block"><div class="chart-title">Profil altimétrique</div><canvas id="elev-${r.id}" width="300" height="90"></canvas></div>` : ''}
         </div>` : ''}
+        ${hasTrack ? `<button type="button" class="secondary small btn-map-result" data-map-id="${r.id}">🌍 Afficher sur une vraie carte</button><div id="map-${r.id}" class="result-map" style="display:none;"></div>` : ''}
       </div>
     `;
     }).join('');
@@ -1098,11 +1143,59 @@
         if (result) startEditResult(result);
       });
     });
+    container.querySelectorAll('.btn-map-result').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const result = data.results.find((r) => r.id === e.target.dataset.mapId);
+        if (result) showRealMap(result);
+      });
+    });
 
     items.forEach((r) => {
       if (r.track && r.track.length > 1) drawRouteShape(`track-${r.id}`, r.track);
       if (r.elevations && r.elevations.length > 1) drawElevationProfile(`elev-${r.id}`, r.elevations);
     });
+  }
+
+  let leafletPromise = null;
+
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve(window.L);
+    if (leafletPromise) return leafletPromise;
+    leafletPromise = new Promise((resolve, reject) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(css);
+      const script = document.createElement('script');
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.onload = () => resolve(window.L);
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    return leafletPromise;
+  }
+
+  async function showRealMap(result) {
+    const mapElement = document.getElementById(`map-${result.id}`);
+    if (!mapElement) return;
+    mapElement.style.display = '';
+    mapElement.textContent = 'Chargement de la carte...';
+    try {
+      const L = await loadLeaflet();
+      mapElement.textContent = '';
+      const points = result.track.map(([lat, lon]) => [lat, lon]);
+      const map = L.map(mapElement, { zoomControl: true });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+      }).addTo(map);
+      const line = L.polyline(points, { color: '#22c55e', weight: 4 }).addTo(map);
+      L.circleMarker(points[0], { radius: 5, color: '#facc15', fillColor: '#facc15', fillOpacity: 1 }).addTo(map);
+      map.fitBounds(line.getBounds(), { padding: [16, 16] });
+      mapElement.dataset.loaded = 'true';
+    } catch (error) {
+      mapElement.textContent = 'Carte indisponible hors connexion. Le tracé local reste disponible ci-dessus.';
+    }
   }
 
   function roundRectPath(ctx, x, y, w, h, r) {
