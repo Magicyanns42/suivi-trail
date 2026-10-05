@@ -221,13 +221,15 @@
     return `https://www.google.com/search?q=${encodeURIComponent(`météo ${location} ${dateLabel}`)}`;
   }
 
-  // Parses "hh:mm" or "h:mm:ss" into total minutes, or null if invalid/empty.
+  // Parses "hh:mm" or "hh:mm:ss" into total minutes, or null if invalid/empty.
   function parseTempsToMinutes(temps) {
     if (!temps) return null;
     const parts = temps.split(':').map(Number);
     if (parts.some((n) => isNaN(n))) return null;
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-    if (parts.length === 3) return parts[0] * 60 + parts[1] + parts[2] / 60;
+    if (parts.length === 2 && parts[1] < 60) return parts[0] * 60 + parts[1];
+    if (parts.length === 3 && parts[1] < 60 && parts[2] < 60) {
+      return parts[0] * 60 + parts[1] + parts[2] / 60;
+    }
     return null;
   }
 
