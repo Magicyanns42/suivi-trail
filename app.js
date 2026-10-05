@@ -19,9 +19,38 @@
   }
 
   function saveData() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    maybeAutoBackup();
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      maybeAutoBackup();
+      return true;
+    } catch (error) {
+      console.error('Impossible de sauvegarder les données locales.', error);
+      const status = document.getElementById('storage-persistence-status');
+      if (status) status.textContent = '⚠️ Sauvegarde locale impossible (stockage plein ou indisponible). Exporte tes données et libère de l’espace.';
+      return false;
+    }
   }
+
+  async function protectLocalStorage() {
+    const status = document.getElementById('storage-persistence-status');
+    if (!navigator.storage) {
+      if (status) status.textContent = 'Protection persistante non prise en charge par ce navigateur. Garde une sauvegarde JSON régulière.';
+      return;
+    }
+    try {
+      let persisted = await navigator.storage.persisted();
+      if (!persisted) persisted = await navigator.storage.persist();
+      if (status) {
+        status.textContent = persisted
+          ? '✅ Stockage persistant accordé : Android ne devrait pas effacer ces données automatiquement.'
+          : '⚠️ Stockage persistant non accordé par le navigateur. Exporte régulièrement une sauvegarde JSON.';
+      }
+    } catch (error) {
+      if (status) status.textContent = 'État de protection indisponible. Exporte régulièrement une sauvegarde JSON.';
+    }
+  }
+
+  protectLocalStorage();
 
   function downloadBackup(filename) {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
