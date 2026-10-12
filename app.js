@@ -537,6 +537,7 @@
 
   function renderPlanList(containerId, items, isUpcoming) {
     const container = document.getElementById(containerId);
+    const openedPlans = new Set(Array.from(container.querySelectorAll('.plan-collapsible[open]')).map((item) => item.dataset.id));
     if (items.length === 0) {
       container.innerHTML = `<div class="empty">${isUpcoming ? 'Aucune sortie planifiée.' : 'Aucune sortie passée.'}</div>`;
       return;
@@ -544,6 +545,19 @@
     container.innerHTML = items.map((p) => {
       const checklist = p.checklist || [];
       const checkedCount = checklist.filter((c) => c.checked).length;
+      const trainingSteps = p.trainingSteps || [];
+      const trainingHtml = trainingSteps.length ? `
+        <details class="training-steps">
+          <summary>Plan d'entraînement (${trainingSteps.filter((step) => step.checked).length}/${trainingSteps.length})</summary>
+          <div class="checklist-items">
+            ${trainingSteps.map((step, index) => `
+              <label class="checklist-item">
+                <input type="checkbox" data-training-index="${index}" ${step.checked ? 'checked' : ''} />
+                <span>${formatDateTime(step.date)} · ${escapeHtml(step.name)} · ${step.distanceKm} km</span>
+              </label>
+            `).join('')}
+          </div>
+        </details>` : '';
 
       const checklistHtml = `
         <details class="checklist">
@@ -592,6 +606,7 @@
               <button class="secondary small btn-edit">✏️</button>
               <button class="danger small btn-del">🗑</button>
             </div>
+            ${trainingHtml}
             ${checklistHtml}
           </div>
         </details>
@@ -599,24 +614,43 @@
       }
 
       return `
-      <div class="item" data-id="${p.id}">
-        <div class="item-top">
-          <div>
-            <div class="item-title">${p.isRace ? '🏆 ' : ''}${escapeHtml(p.name)} ${p.done ? '<span class="badge done">Réalisée</span>' : ''}</div>
+      <details class="item plan-collapsible" data-id="${p.id}">
+        <summary class="plan-summary">
+          <span class="plan-summary-title">${p.isRace ? '🏆 ' : ''}${escapeHtml(p.name)}</span>
+          <span class="plan-summary-chevron">▾</span>
+        </summary>
+        <div class="plan-details">
+            ${p.done ? '<span class="badge done">Réalisée</span>' : ''}
             <div class="item-meta">${formatDateTime(p.date)}${p.distanceKm ? ` · ${p.distanceKm} km` : ''}${p.deniveleM ? ` · D+ ${p.deniveleM} m` : ''}</div>
             ${p.location ? `<div class="item-meta">📍 ${escapeHtml(p.location)} · <a href="${mapsUrl(p.location)}" target="_blank" rel="noopener noreferrer">Voir sur Maps</a></div>` : ''}
-          </div>
           <div class="item-btns">
             ${p.done ? `<button class="secondary small btn-undone">↩️ Annuler</button>` : ''}
             <button class="secondary small btn-edit">✏️</button>
             <button class="danger small btn-del">🗑</button>
           </div>
-        </div>
         ${p.notes ? `<div class="item-notes">${escapeHtml(p.notes)}</div>` : ''}
+        ${trainingHtml}
         ${checklistHtml}
-      </div>
+        </div>
+      </details>
     `;
     }).join('');
+
+    container.querySelectorAll('.plan-collapsible').forEach((item) => {
+      item.open = openedPlans.has(item.dataset.id);
+    });
+
+    container.querySelectorAll('[data-training-index]').forEach((checkbox) => {
+      checkbox.addEventListener('change', () => {
+        const plan = data.plans.find((entry) => entry.id === checkbox.closest('.item').dataset.id);
+        const step = plan?.trainingSteps?.[Number(checkbox.dataset.trainingIndex)];
+        if (!step) return;
+        step.checked = checkbox.checked;
+        saveData();
+        checkbox.closest('.training-steps').querySelector('summary').textContent =
+          `Plan d'entraînement (${plan.trainingSteps.filter((entry) => entry.checked).length}/${plan.trainingSteps.length})`;
+      });
+    });
 
     container.querySelectorAll('.btn-del').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -729,13 +763,14 @@
   function generateTrainingPlan(race) {
     const weeksInput = prompt('Sur combien de semaines veux-tu générer le plan d\'entraînement ?', '8');
     if (!weeksInput) return;
-    const weeks = Math.max(1, Math.min(20, parseInt(weeksInput, 10) || 0));
-    if (!weeks) {
+    const weeks = Number(weeksInput);
+    if (!Number.isInteger(weeks) || weeks < 1 || weeks > 20) {
       alert('Nombre de semaines invalide.');
       return;
     }
+    if (race.trainingSteps?.length && !confirm('Remplacer le plan existant et ses cases cochées ?')) return;
     const raceDate = new Date(race.date);
-    let created = 0;
+    const trainingSteps = [];
     for (let w = weeks; w >= 1; w--) {
       const weekStart = new Date(raceDate);
       weekStart.setDate(weekStart.getDate() - w * 7);
@@ -752,27 +787,23 @@
         sessionDate.setDate(sessionDate.getDate() + s.offset);
         sessionDate.setHours(9, 0, 0, 0);
         if (sessionDate.getTime() <= Date.now() || sessionDate >= raceDate) return;
-        data.plans.push({
-          id: uid(),
-          name: `${s.name} (prépa ${race.name})`,
-          date: sessionDate.toISOString().slice(0, 16),
+        trainingSteps.push({
+          name: s.name,
+          date: `${sessionDate.getFullYear()}-${String(sessionDate.getMonth() + 1).padStart(2, '0')}-${String(sessionDate.getDate()).padStart(2, '0')}T09:00`,
           distanceKm: s.km,
-          deniveleM: null,
-          location: race.location || null,
-          isRace: false,
-          checklist: buildDefaultChecklist(false),
-          reminderHours: '24',
-          notes: `Séance de préparation pour ${race.name}`,
-          done: false,
-          reminded: false,
+          checked: false,
         });
-        created++;
       });
     }
+    if (!trainingSteps.length) {
+      alert('Aucune séance future disponible avant cette course.');
+      return;
+    }
+    race.trainingSteps = trainingSteps;
     saveData();
     renderPlanning();
     renderResultForm();
-    alert(`${created} séances d'entraînement ajoutées au planning.`);
+    alert(`${trainingSteps.length} étapes ajoutées dans la course ${race.name}.`);
   }
 
   function prefillResultFromPlan(plan) {
