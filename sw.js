@@ -1,4 +1,4 @@
-const CACHE = 'suivi-trail-v28';
+const CACHE = 'suivi-trail-v29';
 const ASSETS = [
   './',
   './index.html',
@@ -11,28 +11,32 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
-  self.skipWaiting();
+  event.waitUntil(caches.open(CACHE).then((cache) =>
+    cache.addAll(ASSETS.map((asset) => new Request(asset, { cache: 'reload' })))
+  ));
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    )
+      Promise.all(keys.filter((k) => k.startsWith('suivi-trail-') && k !== CACHE).map((k) => caches.delete(k)))
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.open(CACHE).then((cache) => cache.match(event.request)).then((cached) => cached || fetch(event.request))
   );
 });
 
 // Allows the page to ask the service worker to display a notification
 // even when the page itself is backgrounded (but not fully closed).
 self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
   if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
     const { title, options } = event.data;
     self.registration.showNotification(title, options);

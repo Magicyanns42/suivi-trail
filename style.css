@@ -67,6 +67,22 @@ header p {
 }
 #notif-banner.show { display: flex; }
 
+#update-banner {
+  margin: 10px 16px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+#update-banner[hidden] { display: none; }
+#update-banner button { flex-shrink: 0; }
+
 main { padding: 8px 16px 16px; }
 
 .tab-panel { display: none; }

@@ -133,9 +133,59 @@
 
   // ---------- Service worker registration ----------
   let swRegistration = null;
+  let updateRequested = false;
+  let reloadAvailable = false;
+  const updateBanner = document.getElementById('update-banner');
+  const updateButton = document.getElementById('btn-update-app');
+
+  function showAppUpdate() {
+    updateBanner.hidden = false;
+    document.getElementById('update-message').textContent = 'Nouvelle version disponible';
+    updateButton.disabled = false;
+    updateButton.textContent = 'Mettre à jour';
+  }
+
+  updateButton.addEventListener('click', () => {
+    if (document.querySelector('.modal-overlay.open') &&
+        !confirm('Un formulaire est ouvert. Les saisies non enregistrées seront perdues. Mettre à jour quand même ?')) return;
+    if (reloadAvailable) {
+      window.location.reload();
+      return;
+    }
+    const worker = swRegistration?.waiting;
+    if (!worker) return;
+    updateRequested = true;
+    updateButton.disabled = true;
+    updateButton.textContent = 'Mise à jour...';
+    worker.postMessage({ type: 'SKIP_WAITING' });
+  });
+
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').then((reg) => {
+    const initiallyControlled = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (updateRequested) {
+        updateRequested = false;
+        window.location.reload();
+      } else if (initiallyControlled) {
+        reloadAvailable = true;
+        showAppUpdate();
+      }
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
       swRegistration = reg;
+      if (reg.waiting) showAppUpdate();
+      reg.addEventListener('updatefound', () => {
+        const worker = reg.installing;
+        if (!worker) return;
+        worker.addEventListener('statechange', () => {
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) showAppUpdate();
+        });
+      });
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          reg.update().catch((error) => console.warn('Update check unavailable', error));
+        }
+      });
     }).catch((e) => console.warn('SW registration failed', e));
   }
 
