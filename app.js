@@ -113,8 +113,31 @@
   function applyAppearance(appearance) {
     document.documentElement.dataset.theme = appearance.theme;
     document.documentElement.style.setProperty('--accent', appearance.accent);
+    const surface = appearance.backgrounds?.[appearance.theme];
+    const surfaceProperties = ['--bg', '--panel', '--panel-2', '--border', '--text', '--muted'];
+    surfaceProperties.forEach((property) => document.documentElement.style.removeProperty(property));
+    document.documentElement.style.removeProperty('color-scheme');
+    if (surface && /^#[0-9a-f]{6}$/i.test(surface)) {
+      const channels = [1, 3, 5].map((offset) => parseInt(surface.slice(offset, offset + 2), 16));
+      const lightBackground = channels[0] * 0.299 + channels[1] * 0.587 + channels[2] * 0.114 > 150;
+      const target = lightBackground ? 0 : 255;
+      const mix = (amount) => '#' + channels.map((channel) =>
+        Math.round(channel + (target - channel) * amount).toString(16).padStart(2, '0')
+      ).join('');
+      const colors = {
+        '--bg': surface,
+        '--panel': mix(0.06),
+        '--panel-2': mix(0.1),
+        '--border': mix(0.25),
+        '--text': lightBackground ? '#17231b' : '#f1f5f9',
+        '--muted': lightBackground ? '#34443a' : '#d1dbe3',
+      };
+      Object.entries(colors).forEach(([property, value]) => document.documentElement.style.setProperty(property, value));
+      document.documentElement.style.setProperty('color-scheme', lightBackground ? 'light' : 'dark');
+    }
     document.getElementById('theme-select').value = appearance.theme;
     document.getElementById('accent-color').value = appearance.accent;
+    document.getElementById('interface-color').value = surface || (appearance.theme === 'light' ? '#f4f7f5' : '#0f172a');
     if (document.getElementById('tab-stats').classList.contains('active')) renderEvolutionCharts();
   }
 
@@ -127,6 +150,17 @@
   });
   document.getElementById('accent-color').addEventListener('input', (e) => {
     appearance.accent = e.target.value;
+    localStorage.setItem(APPEARANCE_KEY, JSON.stringify(appearance));
+    applyAppearance(appearance);
+  });
+  document.getElementById('interface-color').addEventListener('input', (e) => {
+    appearance.backgrounds = { ...appearance.backgrounds, [appearance.theme]: e.target.value };
+    localStorage.setItem(APPEARANCE_KEY, JSON.stringify(appearance));
+    applyAppearance(appearance);
+  });
+  document.getElementById('btn-reset-colors').addEventListener('click', () => {
+    appearance.accent = '#22c55e';
+    delete appearance.backgrounds;
     localStorage.setItem(APPEARANCE_KEY, JSON.stringify(appearance));
     applyAppearance(appearance);
   });
