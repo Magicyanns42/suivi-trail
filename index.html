@@ -184,16 +184,22 @@
 
   <!-- STATS -->
   <section id="tab-stats" class="tab-panel">
-    <div class="card">
-      <h2>📊 Statistiques</h2>
+    <div class="stats-heading">
+      <h2>Mon activité</h2>
+      <span class="stats-period">Depuis le début</span>
+    </div>
+    <div class="stats-overview">
       <div class="stats-grid" id="stats-grid"></div>
     </div>
 
-    <div class="card">
-      <h2>📈 Évolution hebdomadaire</h2>
-      <p class="empty" id="evolution-empty" style="display:none;">Ajoute au moins deux résultats pour voir ta progression.</p>
+    <div class="stats-evolution">
+      <div class="stats-heading">
+        <h2>Évolution hebdomadaire</h2>
+        <span class="stats-period">10 dernières semaines actives</span>
+      </div>
+      <p class="empty" id="evolution-empty" style="display:none;">Aucune évolution disponible : résultats sur deux semaines distinctes nécessaires.</p>
       <div id="evolution-charts">
-        <div class="chart-block">
+        <div class="chart-block stats-distance">
           <div class="chart-title">Distance (km)</div>
           <canvas id="chart-distance" width="600" height="140"></canvas>
         </div>

@@ -187,6 +187,55 @@ button.small { padding: 5px 9px; font-size: 0.78rem; }
 .stat-box .val { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
 .stat-box .lbl { font-size: 0.75rem; color: var(--muted); }
 
+#tab-stats {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 12px 0 28px;
+}
+#tab-stats .stats-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-bottom: 18px;
+}
+#tab-stats h2 { margin: 0; font-size: 1.15rem; font-weight: 650; }
+.stats-period { color: var(--muted); font-size: 0.75rem; }
+.stats-overview { margin-bottom: 32px; }
+#tab-stats .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+#tab-stats .stat-box {
+  min-width: 0;
+  padding: 18px 16px;
+  border-radius: 8px;
+  border-top: 3px solid var(--accent);
+  background: var(--panel);
+  text-align: left;
+}
+#tab-stats .stat-box:nth-child(2) { border-top-color: #0ea5e9; }
+#tab-stats .stat-box:nth-child(3) { border-top-color: #eab308; }
+#tab-stats .stat-box:nth-child(4) { border-top-color: #f97316; }
+#tab-stats .stat-box .val {
+  color: var(--text);
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  margin-bottom: 6px;
+}
+#tab-stats .stat-box .lbl { font-size: 0.78rem; }
+.stats-evolution { border-top: 1px solid var(--border); padding-top: 24px; }
+#tab-stats #evolution-charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+#tab-stats .chart-block { margin: 0; min-width: 0; }
+#tab-stats .stats-distance { grid-column: 1 / -1; }
+#tab-stats .chart-title { color: var(--text); font-size: 0.9rem; font-weight: 600; margin-bottom: 14px; }
+#tab-stats canvas { width: 100%; height: 180px; }
+#tab-stats #evolution-empty { padding: 24px 0; }
+@media (max-width: 600px) {
+  #tab-stats .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  #tab-stats .stat-box { padding: 16px 12px; }
+  #tab-stats #evolution-charts { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+}
+
 .chart-block { margin-bottom: 18px; }
 .chart-block:last-child { margin-bottom: 0; }
 .chart-title { font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; }

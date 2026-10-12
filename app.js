@@ -115,6 +115,7 @@
     document.documentElement.style.setProperty('--accent', appearance.accent);
     document.getElementById('theme-select').value = appearance.theme;
     document.getElementById('accent-color').value = appearance.accent;
+    if (document.getElementById('tab-stats').classList.contains('active')) renderEvolutionCharts();
   }
 
   const appearance = getAppearance();
@@ -538,6 +539,7 @@
   function renderPlanList(containerId, items, isUpcoming) {
     const container = document.getElementById(containerId);
     const openedPlans = new Set(Array.from(container.querySelectorAll('.plan-collapsible[open]')).map((item) => item.dataset.id));
+    const openedTrainingPlans = new Set(Array.from(container.querySelectorAll('.training-steps[open]')).map((item) => item.closest('.item').dataset.id));
     if (items.length === 0) {
       container.innerHTML = `<div class="empty">${isUpcoming ? 'Aucune sortie planifiée.' : 'Aucune sortie passée.'}</div>`;
       return;
@@ -551,11 +553,17 @@
           <summary>Plan d'entraînement (${trainingSteps.filter((step) => step.checked).length}/${trainingSteps.length})</summary>
           <div class="checklist-items">
             ${trainingSteps.map((step, index) => `
-              <label class="checklist-item">
-                <input type="checkbox" data-training-index="${index}" ${step.checked ? 'checked' : ''} />
-                <span>${formatDateTime(step.date)} · ${escapeHtml(step.name)} · ${step.distanceKm} km</span>
-              </label>
+              <div class="checklist-item">
+                <label style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
+                  <input type="checkbox" data-training-index="${index}" ${step.checked ? 'checked' : ''} />
+                  <span>${formatDateTime(step.date)} · ${escapeHtml(step.name)} · ${step.distanceKm} km</span>
+                </label>
+                <button type="button" class="danger small btn-delete-training-step" data-step-index="${index}" title="Supprimer cette séance" aria-label="Supprimer cette séance">✕</button>
+              </div>
             `).join('')}
+          </div>
+          <div class="actions-row">
+            <button type="button" class="danger small btn-delete-training-plan">Supprimer le plan</button>
           </div>
         </details>` : '';
 
@@ -638,6 +646,29 @@
 
     container.querySelectorAll('.plan-collapsible').forEach((item) => {
       item.open = openedPlans.has(item.dataset.id);
+    });
+    container.querySelectorAll('.training-steps').forEach((item) => {
+      item.open = openedTrainingPlans.has(item.closest('.item').dataset.id);
+    });
+
+    container.querySelectorAll('.btn-delete-training-step').forEach((button) => {
+      button.addEventListener('click', () => {
+        const plan = data.plans.find((entry) => entry.id === button.closest('.item').dataset.id);
+        const index = Number(button.dataset.stepIndex);
+        if (!plan?.trainingSteps?.[index] || !confirm('Supprimer cette séance du plan ?')) return;
+        plan.trainingSteps.splice(index, 1);
+        saveData();
+        renderPlanning();
+      });
+    });
+    container.querySelectorAll('.btn-delete-training-plan').forEach((button) => {
+      button.addEventListener('click', () => {
+        const plan = data.plans.find((entry) => entry.id === button.closest('.item').dataset.id);
+        if (!plan || !confirm('Supprimer tout le plan d’entraînement ? La course sera conservée.')) return;
+        delete plan.trainingSteps;
+        saveData();
+        renderPlanning();
+      });
     });
 
     container.querySelectorAll('[data-training-index]').forEach((checkbox) => {
@@ -1655,6 +1686,7 @@
   }
 
   function renderEvolutionCharts() {
+    if (!document.getElementById('tab-stats').classList.contains('active')) return;
     const weekly = buildWeeklyStats();
     const emptyMsg = document.getElementById('evolution-empty');
     const chartsDiv = document.getElementById('evolution-charts');
@@ -1666,9 +1698,30 @@
     emptyMsg.style.display = 'none';
     chartsDiv.style.display = '';
 
-    drawBarChart('chart-distance', weekly.map((w) => w.label), weekly.map((w) => w.km), '#22c55e', 'km');
-    drawBarChart('chart-denivele', weekly.map((w) => w.label), weekly.map((w) => w.denivele), '#facc15', 'm');
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    drawBarChart('chart-distance', weekly.map((w) => w.label), weekly.map((w) => w.km), accent, 'km');
+    drawBarChart('chart-denivele', weekly.map((w) => w.label), weekly.map((w) => w.denivele), '#eab308', 'm');
     drawLineChart('chart-allure', weekly.map((w) => w.label), weekly.map((w) => w.pace));
+  }
+
+  window.addEventListener('resize', renderEvolutionCharts);
+
+  function drawStatsGrid(ctx, width, height) {
+    const theme = getComputedStyle(document.documentElement);
+    ctx.strokeStyle = theme.getPropertyValue('--border').trim();
+    ctx.lineWidth = 1;
+    for (let row = 0; row <= 3; row++) {
+      const positionY = 30 + (height - 60) * row / 3;
+      ctx.beginPath();
+      ctx.moveTo(12, positionY);
+      ctx.lineTo(width - 12, positionY);
+      ctx.stroke();
+    }
+    return {
+      text: theme.getPropertyValue('--text').trim(),
+      muted: theme.getPropertyValue('--muted').trim(),
+      accent: theme.getPropertyValue('--accent').trim(),
+    };
   }
 
   function setupCanvas(canvas, height = 140) {
@@ -1685,9 +1738,10 @@
 
   function drawBarChart(canvasId, labels, values, color, unit) {
     const canvas = document.getElementById(canvasId);
-    const { ctx, width, height } = setupCanvas(canvas);
-    const padTop = 16;
-    const padBottom = 20;
+    const { ctx, width, height } = setupCanvas(canvas, 180);
+    const theme = drawStatsGrid(ctx, width, height);
+    const padTop = 30;
+    const padBottom = 30;
     const max = Math.max(...values, 1);
     const barAreaHeight = height - padTop - padBottom;
     const barWidth = width / values.length;
@@ -1697,26 +1751,30 @@
       const x = i * barWidth + barWidth * 0.2;
       const y = padTop + (barAreaHeight - barHeight);
       ctx.fillStyle = color;
-      ctx.fillRect(x, y, barWidth * 0.6, barHeight);
+      if (barHeight > 0) {
+        roundRectPath(ctx, x, y, barWidth * 0.6, barHeight, 4);
+        ctx.fill();
+      }
 
-      ctx.fillStyle = '#e2e8f0';
-      ctx.font = '10px system-ui, sans-serif';
+      ctx.fillStyle = theme.text;
+      ctx.font = '11px system-ui, sans-serif';
       ctx.textAlign = 'center';
-      if (v > 0) ctx.fillText(`${v}${unit}`, x + barWidth * 0.3, y - 4 < padTop ? padTop + 10 : y - 4);
+      if (v > 0 && barWidth >= 40) ctx.fillText(`${v}`, x + barWidth * 0.3, y - 7, barWidth - 6);
 
-      ctx.fillStyle = '#94a3b8';
-      ctx.fillText(labels[i], x + barWidth * 0.3, height - 4);
+      ctx.fillStyle = theme.muted;
+      if (i % Math.ceil(45 / barWidth) === 0) ctx.fillText(labels[i], x + barWidth * 0.3, height - 8);
     });
   }
 
   function drawLineChart(canvasId, labels, values) {
     const canvas = document.getElementById(canvasId);
-    const { ctx, width, height } = setupCanvas(canvas);
-    const padTop = 16;
-    const padBottom = 20;
+    const { ctx, width, height } = setupCanvas(canvas, 180);
+    const theme = drawStatsGrid(ctx, width, height);
+    const padTop = 30;
+    const padBottom = 30;
     const valid = values.filter((v) => v !== null && v !== undefined);
     if (valid.length === 0) {
-      ctx.fillStyle = '#94a3b8';
+      ctx.fillStyle = theme.muted;
       ctx.font = '12px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Pas encore de temps enregistrés', width / 2, height / 2);
@@ -1726,10 +1784,10 @@
     const min = Math.min(...valid);
     const range = max - min || 1;
     const plotHeight = height - padTop - padBottom;
-    const stepX = width / Math.max(values.length - 1, 1);
+    const stepX = (width - 40) / Math.max(values.length - 1, 1);
 
     const points = values
-      .map((v, i) => (v === null || v === undefined ? null : { x: i * stepX, y: padTop + (1 - (v - min) / range) * plotHeight }))
+      .map((v, i) => (v === null || v === undefined ? null : { x: 20 + i * stepX, y: padTop + (1 - (v - min) / range) * plotHeight }))
       .filter(Boolean);
 
     // Gradient fill under the line to make the trend easier to read at a glance.
@@ -1744,13 +1802,13 @@
     ctx.closePath();
     ctx.fill();
 
-    ctx.strokeStyle = '#22c55e';
+    ctx.strokeStyle = theme.accent;
     ctx.lineWidth = 2;
     ctx.beginPath();
     let started = false;
     values.forEach((v, i) => {
       if (v === null || v === undefined) return;
-      const x = i * stepX;
+      const x = 20 + i * stepX;
       const y = padTop + (1 - (v - min) / range) * plotHeight;
       if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
     });
@@ -1758,16 +1816,16 @@
 
     values.forEach((v, i) => {
       if (v === null || v === undefined) return;
-      const x = i * stepX;
+      const x = 20 + i * stepX;
       const y = padTop + (1 - (v - min) / range) * plotHeight;
-      ctx.fillStyle = '#22c55e';
+      ctx.fillStyle = theme.accent;
       ctx.beginPath();
       ctx.arc(x, y, 3, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#94a3b8';
+      ctx.fillStyle = theme.muted;
       ctx.font = '10px system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(labels[i], x, height - 4);
+      if (i % Math.ceil(45 / stepX) === 0 || i === values.length - 1) ctx.fillText(labels[i], x, height - 8);
     });
   }
 
